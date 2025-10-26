@@ -1,4 +1,4 @@
-import { CacheItem, ChatResponse } from '../../.next/types';
+import { CacheItem, ChatResponse } from '@/app/types';
 
 const cache: Map<string, CacheItem> = new Map();
 const CACHE_DURATION: number = 10 * 60 * 1000; //10 minutes

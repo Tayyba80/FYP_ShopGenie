@@ -1,4 +1,4 @@
-import { Product, SearchQuery } from '../../.next/types';
+import { Product, SearchQuery } from '@/app/types';
 
 export function rankProducts(products: Product[], query: SearchQuery): Product[] {
   console.log(`Ranking ${products.length} products for query:`, query);

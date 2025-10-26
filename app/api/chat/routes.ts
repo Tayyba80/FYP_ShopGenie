@@ -3,7 +3,7 @@ import { parseUserQuery } from '@/app/lib/queryParser';
 import { searchProducts } from '@/app/lib/searchEngine';
 import { rankProducts, generateExplanation } from '@/app/lib/rankingEngine';
 import { getFromCache, setToCache } from '@/app/lib/cache';
-import { ChatResponse } from '@/.next/types';
+import { ChatResponse } from '@/app/types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {

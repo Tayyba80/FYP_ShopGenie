@@ -1,4 +1,4 @@
-import { Product } from '../../.next/types';
+import { Product } from '../types';
 
 export const sampleProducts: Product[] = [
   {

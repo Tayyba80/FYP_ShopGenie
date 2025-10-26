@@ -1,4 +1,4 @@
-import { SearchQuery, Product } from '../../.next/types';
+import { SearchQuery, Product } from '@/app/types';
 import { sampleProducts } from '../data/sampleProducts';
 
 export function searchProducts(query: SearchQuery): Product[] {
