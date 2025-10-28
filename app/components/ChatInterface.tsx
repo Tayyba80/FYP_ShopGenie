@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Send, Mic, User, Bot } from 'lucide-react';
-import { ChatResponse } from '@/app/types';
+import { ChatResponse } from '../types';
 
 interface ChatHistoryItem {
   type: 'user' | 'bot';

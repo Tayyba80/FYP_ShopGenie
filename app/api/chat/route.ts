@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseUserQuery } from '@/app/lib/queryParser';
-import { searchProducts } from '@/app/lib/searchEngine';
-import { rankProducts, generateExplanation } from '@/app/lib/rankingEngine';
-import { getFromCache, setToCache } from '@/app/lib/cache';
-import { ChatResponse } from '@/app/types';
+import { parseUserQuery } from '../../lib/queryParser';
+import { searchProducts } from '../../lib/searchEngine';
+import { rankProducts, generateExplanation } from '../../lib/rankingEngine';
+import { getFromCache, setToCache } from '../../lib/cache';
+import { ChatResponse } from '../../types';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -15,30 +15,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 400 }
       );
     }
-    
+    console.log('checking cache');
     // Check cache first
     const cachedResult = getFromCache(message);
+    console.log(cachedResult)
     if (cachedResult) {
       console.log('Serving from cache:', message);
       return NextResponse.json(cachedResult);
     }
     
-    // Step 1: Parse user query
+    //parse user query
     const parsedQuery = parseUserQuery(message);
     console.log('Parsed Query:', parsedQuery);
     
-    // Step 2: Search products
+    //search products
     const searchResults = searchProducts(parsedQuery);
     console.log('Search Results:', searchResults.length);
     
-    // Step 3: Rank products
+    //rank products
     const rankedProducts = rankProducts(searchResults, parsedQuery);
     console.log('Ranked Products:', rankedProducts.length);
     
-    // Step 4: Generate explanation
+    //generate explanation
     const explanation = generateExplanation(rankedProducts, parsedQuery);
     
-    // Prepare final response
+    //final response
     const response: ChatResponse = {
       products: rankedProducts,
       explanation: explanation,
@@ -49,7 +50,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     
     // Cache the result
     setToCache(message, response);
-    
+    console.log('set cache for :', response);
+    console.log('Response in routes');
     return NextResponse.json(response);
     
   } catch (error) {

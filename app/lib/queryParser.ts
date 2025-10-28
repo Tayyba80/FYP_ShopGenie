@@ -1,4 +1,4 @@
-import { SearchQuery } from '@/app/types';
+import { SearchQuery } from '../types';
 
 //hardcoded mapping of prompts to structured queries
 const PROMPT_TO_QUERY_MAP: Record<string, SearchQuery> = {

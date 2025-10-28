@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import ChatInterface from './components/ChatInterface';
 import ResultDisplay from './components/ResultsDisplay';
-import { ChatResponse } from '@/app/types';
+import { ChatResponse } from '../app/types';
 
 export default function Home() {
   const [results, setResults] = useState<ChatResponse | null>(null);
@@ -12,11 +12,12 @@ export default function Home() {
   const handleUserQuery = async (userMessage: string): Promise<void> => {
     setIsLoading(true);
     
-    // Add user message to chat history
     setChatHistory(prev => [...prev, { type: 'user', content: userMessage }]);
     console.log('User Message:', userMessage);
     
     try {
+      console.log('Making API call to:', '/api/chat');
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -25,11 +26,18 @@ export default function Home() {
         body: JSON.stringify({ message: userMessage }),
       });
       
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data: ChatResponse = await response.json();
+      console.log('Success! Data received:', data);
+      
       setResults(data);
       
       // Add bot response to chat history

@@ -1,4 +1,4 @@
-import { SearchQuery, Product } from '@/app/types';
+import { SearchQuery, Product } from '../types';
 import { sampleProducts } from '../data/sampleProducts';
 
 export function searchProducts(query: SearchQuery): Product[] {
@@ -16,7 +16,7 @@ export function searchProducts(query: SearchQuery): Product[] {
   };
   
   const productKey: string = query.product.toLowerCase();
-  const productIds: number[] = HARDCODED_RESULTS[productKey] || [1];
+  const productIds: number[] = HARDCODED_RESULTS[productKey] || [0];
   
   //filter products 
   const results: Product[] = sampleProducts.filter(product => 

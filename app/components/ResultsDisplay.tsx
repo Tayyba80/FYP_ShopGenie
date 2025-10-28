@@ -1,5 +1,5 @@
 import ProductCard from './ProductCard';
-import { ChatResponse } from '@/app/types';
+import { ChatResponse } from '../types';
 import { Info, TrendingUp } from 'lucide-react';
 
 interface ResultDisplayProps {

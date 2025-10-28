@@ -1,5 +1,5 @@
 import { Star, Truck, Shield, CheckCircle, Award } from 'lucide-react';
-import { Product } from '@/app/types';
+import { Product } from '../types';
 
 interface ProductCardProps {
   product: Product;
