@@ -62,7 +62,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto px-4">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            ShopAssist
+            ShopGenie
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Your AI-powered shopping assistant that finds the best products across multiple platforms

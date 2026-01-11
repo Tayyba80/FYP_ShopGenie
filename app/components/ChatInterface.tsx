@@ -58,7 +58,7 @@ export default function ChatInterface({ onSendMessage, isLoading, chatHistory }:
     <div className="bg-white rounded-2xl shadow-xl h-[600px] flex flex-col">
       {/* Chat Header */}
       <div className="border-b border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900">Shopping Assistant</h2>
+        <h2 className="text-2xl font-bold text-gray-900">ShopGenie</h2>
         <p className="text-gray-600 mt-1">Ask me anything about products!</p>
       </div>
 
