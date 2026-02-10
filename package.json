@@ -9,8 +9,8 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "lint": "eslint",
-    "test:ranking": "tsx lib/testRanking.ts",
-    "dev:ranking": "tsx --watch lib/testRanking.ts"
+    "test:ranking": "tsx app/lib/testRanking.ts",
+    "dev:ranking": "tsx --watch app/lib/testRanking.ts"
   },
   "dependencies": {
     "lucide-react": "^0.548.0",

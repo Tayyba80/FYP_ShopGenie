@@ -1,4 +1,3 @@
-// lib/ranking/simpleRanking.ts (If you need something simpler to start)
 import { Product, SearchQuery } from '../types';
 
 export class SimpleRankingEngine {
