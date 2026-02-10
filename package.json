@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "type-check": "tsc --noEmit",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:ranking": "tsx lib/testRanking.ts",
+    "dev:ranking": "tsx --watch lib/testRanking.ts"
   },
   "dependencies": {
     "lucide-react": "^0.548.0",
@@ -25,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
