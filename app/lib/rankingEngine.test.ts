@@ -23,7 +23,7 @@ export class RankingEngine {
     };
   }
 
-    async rankProducts(products: Product[]): Promise<{
+  async rankProducts(products: Product[]): Promise<{
     rankedProducts: RankedProduct[];
     topProducts: Product[];
     metrics: RankingMetrics;
