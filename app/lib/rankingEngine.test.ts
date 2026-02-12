@@ -1,69 +1,84 @@
-import { Product, SearchQuery } from '../types';
+import { Product, SearchQuery, RankedProduct, ScoreBreakdown, RankingMetrics, RankingConfig } from '../types';
 
-export class SimpleRankingEngine {
-  async rankProducts(products: Product[], query: SearchQuery): Promise<Product[]> {
-    console.log(`🔢 Simple ranking of ${products.length} products`);
-    
-    // Step 1: Basic filtering
-    const filtered = products.filter(p => 
-      p.rating >= 3.0 &&
-      p.reviews >= 5 &&
-      (!query.filters.maxPrice || p.price <= query.filters.maxPrice)
-    );
-    
-    // Step 2: Calculate simple scores
-    const scoredProducts = filtered.map(product => ({
-      product,
-      score: this.calculateSimpleScore(product, query)
-    }));
-    
-    // Step 3: Sort by score
-    scoredProducts.sort((a, b) => b.score - a.score);
-    
-    // Step 4: Return top 5
-    return scoredProducts.slice(0, 5).map(sp => sp.product);
-  }
+export class RankingEngine {
+  private config: RankingConfig;
   
-  private calculateSimpleScore(product: Product, query: SearchQuery): number {
-    let score = 0;
-    
-    // 1. Rating (40%)
-    score += (product.rating / 5) * 40;
-    
-    // 2. Review count with diminishing returns (30%)
-    score += Math.min(30, Math.log10(product.reviews + 1) * 10);
-    
-    // 3. Price (20% - cheaper is better)
-    if (query.filters.maxPrice) {
-      const priceRatio = 1 - (product.price / query.filters.maxPrice);
-      score += Math.max(0, priceRatio * 20);
-    } else {
-      score += 10; // Neutral price score
-    }
-    
-    // 4. Simple sentiment (10%)
-    // const sentiment = this.calculateSimpleSentiment(product.reviewsText || []);
-    // score += sentiment * 10;
-    
-    return score;
+  constructor(userQuery: SearchQuery) {
+    this.config = {
+      weights: {
+        rating: 0.25,      
+        sentiment: 0.20,   
+        reviewCount: 0.15, 
+        price: 0.15,       
+        relevance: 0.10,   
+        credibility: 0.05,
+        delivery: 0.05,    
+        warranty: 0.05     
+      },
+      thresholds: {
+        minReviews: 5,
+        maxPrice: userQuery.filters.maxPrice,
+        minRating: 3.0
+      }
+    };
   }
-  
-  private calculateSimpleSentiment(reviews: string[]): number {
-    if (reviews.length === 0) return 0.5;
+
+  //   async rankProducts(products: Product[]): Promise<{
+  //   rankedProducts: RankedProduct[];
+  //   topProducts: Product[];
+  //   metrics: RankingMetrics;
+  //   explanation: string;
+  // }> {
+  //   console.log(`🏆 Ranking ${products.length} products...`);
     
-    const positiveWords = ['good', 'excellent', 'great', 'love', 'perfect', 'best', 'recommend'];
-    const negativeWords = ['bad', 'poor', 'worst', 'terrible', 'waste', 'avoid'];
+  //   // Step 1: Filter out low-quality products
+  //   const filteredProducts = this.filterProducts(products);
     
-    let positiveCount = 0;
-    let negativeCount = 0;
+  //   // Step 2: Calculate scores for each product
+  //   const rankedProducts = await this.calculateAllScores(filteredProducts);
     
-    reviews.forEach(review => {
-      const lower = review.toLowerCase();
-      if (positiveWords.some(word => lower.includes(word))) positiveCount++;
-      if (negativeWords.some(word => lower.includes(word))) negativeCount++;
+  //   // Step 3: Sort by score descending
+  //   const sortedProducts = this.sortByScore(rankedProducts);
+    
+  //   // Step 4: Add ranking positions
+  //   const withRankings = this.assignRanks(sortedProducts);
+    
+  //   // Step 5: Get top 5 products
+  //   const topProducts = this.getTopProducts(withRankings);
+    
+  //   // Step 6: Generate metrics and explanation
+  //   const metrics = this.calculateMetrics(withRankings);
+  //   const explanation = this.generateExplanation(topProducts, metrics);
+    
+  //   return {
+  //     rankedProducts: withRankings,
+  //     topProducts: topProducts.map(rp => rp.product),
+  //     metrics,
+  //     explanation
+  //   };
+  // }
+
+  private filterProducts(products: Product[]): Product[] {
+    return products.filter(product => {
+      // Filter by minimum reviews
+      if (product.reviews < this.config.thresholds.minReviews) {
+        console.log(`Filtered out ${product.name} - insufficient reviews: ${product.reviews}`);
+        return false;
+      }
+      
+      // Filter by minimum rating
+      if (product.rating < this.config.thresholds.minRating) {
+        console.log(`Filtered out ${product.name} - low rating: ${product.rating}`);
+        return false;
+      }
+      
+      // Filter by max price if specified
+      if (this.config.thresholds.maxPrice && product.price > this.config.thresholds.maxPrice) {
+        console.log(`Filtered out ${product.name} - over budget: ${product.price} > ${this.config.thresholds.maxPrice}`);
+        return false;
+      }
+      
+      return true;
     });
-    
-    const total = positiveCount + negativeCount;
-    return total > 0 ? positiveCount / total : 0.5;
   }
 }
