@@ -28,7 +28,6 @@
 // }
 
 // // Create test products with varying quality
-// const testProducts: TestProduct[] = [
 //   // Excellent product
 //   {
 //     id: 1,
