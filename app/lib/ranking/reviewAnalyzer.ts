@@ -1,133 +1,21 @@
-// // lib/ranking/reviewAnalyzer.ts
-
-// import { Review } from '@/types/product';
-// import Sentiment from 'sentiment'; // npm install sentiment
-
-// interface ReviewAnalysis {
-//   sentimentScore: number;        // -5 to +5
-//   sentimentLabel: 'positive' | 'negative' | 'neutral';
-//   isSpam: boolean;
-//   spamReason?: string;
-// }
-
-// export interface ProductReviewAnalysis {
-//   reviews: ReviewAnalysis[];
-//   spamRatio: number;
-//   sentimentDistribution: {
-//     positive: number;
-//     negative: number;
-//     neutral: number;
-//   };
-//   averageSentiment: number;
-//   uniqueReviewers: number;
-// }
-
-// export class ReviewAnalyzer {
-//   private sentimentAnalyzer: Sentiment;
-
-//   constructor() {
-//     this.sentimentAnalyzer = new Sentiment();
-//   }
-
-//   analyzeProductReviews(reviews: Review[]): ProductReviewAnalysis {
-//     const analyzedReviews: ReviewAnalysis[] = reviews.map(r => this.analyzeSingleReview(r, reviews));
-    
-//     const spamCount = analyzedReviews.filter(r => r.isSpam).length;
-//     const spamRatio = reviews.length > 0 ? spamCount / reviews.length : 0;
-    
-//     const distribution = {
-//       positive: analyzedReviews.filter(r => r.sentimentLabel === 'positive' && !r.isSpam).length,
-//       negative: analyzedReviews.filter(r => r.sentimentLabel === 'negative' && !r.isSpam).length,
-//       neutral: analyzedReviews.filter(r => r.sentimentLabel === 'neutral' && !r.isSpam).length,
-//     };
-
-//     const validReviews = analyzedReviews.filter(r => !r.isSpam);
-//     const averageSentiment = validReviews.length > 0
-//       ? validReviews.reduce((sum, r) => sum + r.sentimentScore, 0) / validReviews.length
-//       : 0;
-
-//     const uniqueReviewers = new Set(reviews.map(r => r.reviewerName?.toLowerCase().trim()).filter(Boolean)).size;
-
-//     return {
-//       reviews: analyzedReviews,
-//       spamRatio,
-//       sentimentDistribution: distribution,
-//       averageSentiment,
-//       uniqueReviewers,
-//     };
-//   }
-
-//   private analyzeSingleReview(review: Review, allReviews: Review[]): ReviewAnalysis {
-//     const sentimentResult = this.sentimentAnalyzer.analyze(review.text);
-//     const score = sentimentResult.score;
-    
-//     let label: 'positive' | 'negative' | 'neutral' = 'neutral';
-//     if (score > 0) label = 'positive';
-//     else if (score < 0) label = 'negative';
-
-//     // Spam detection heuristics
-//     let isSpam = false;
-//     let spamReason = '';
-
-//     // 1. Rating-sentiment mismatch (strong negative text but 5 stars)
-//     if (review.rating >= 4 && score < -2) {
-//       isSpam = true;
-//       spamReason = 'Rating-sentiment mismatch (high rating, negative text)';
-//     }
-
-//     // 2. Very short generic review
-//     if (review.text.length < 10 && /^(good|nice|great|ok|bad|poor)$/i.test(review.text.trim())) {
-//       isSpam = true;
-//       spamReason = 'Too short and generic';
-//     }
-
-//     // 3. Duplicate reviewer names with similar text
-//     const sameReviewerReviews = allReviews.filter(r => 
-//       r.reviewerName?.toLowerCase().trim() === review.reviewerName?.toLowerCase().trim()
-//     );
-//     if (sameReviewerReviews.length > 2) {
-//       const similarCount = sameReviewerReviews.filter(r => 
-//         this.textSimilarity(r.text, review.text) > 0.8
-//       ).length;
-//       if (similarCount > 1) {
-//         isSpam = true;
-//         spamReason = 'Multiple similar reviews from same reviewer';
-//       }
-//     }
-
-//     // 4. Review text identical to another
-//     const identicalCount = allReviews.filter(r => r.text === review.text).length;
-//     if (identicalCount > 1) {
-//       isSpam = true;
-//       spamReason = 'Identical review text appears multiple times';
-//     }
-
-//     return { sentimentScore: score, sentimentLabel: label, isSpam, spamReason };
-//   }
-
-//   private textSimilarity(text1: string, text2: string): number {
-//     // Simple Jaccard similarity on words
-//     const words1 = new Set(text1.toLowerCase().split(/\W+/));
-//     const words2 = new Set(text2.toLowerCase().split(/\W+/));
-//     const intersection = new Set([...words1].filter(w => words2.has(w)));
-//     const union = new Set([...words1, ...words2]);
-//     return intersection.size / union.size;
-//   }
-// }
-// lib/ranking/reviewAnalyzer.ts
-
-// lib/ranking/reviewAnalyzer.ts
-
 import { Review } from '@/types/product';
-import { pipeline, env, Pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
+import { 
+  pipeline, 
+  env, 
+  TextClassificationPipeline, 
+  FeatureExtractionPipeline 
+} from '@xenova/transformers';
 import { franc } from 'franc-min';
 
-// Configuration
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 env.localModelPath = './models';
-env.allowRemoteMessages = true;
+env.allowRemoteModels = true;   // ✅ Fixed typo
 
-// --- TRANSLITERATION & PREPROCESSING ---
-// Expanded mapping for common Roman Urdu words. This helps the multilingual model understand.
+// ============================================================================
+// ROMAN URDU → URDU SCRIPT TRANSLITERATION
+// ============================================================================
 const romanUrduToUrdu: Record<string, string> = {
   'main': 'میں', 'ny': 'نے', 'yeh': 'یہ', 'ha': 'ہے', 'hai': 'ہے',
   'bohot': 'بہت', 'bohat': 'بہت', 'acha': 'اچھا', 'achi': 'اچھی',
@@ -143,7 +31,6 @@ const romanUrduToUrdu: Record<string, string> = {
 };
 
 function transliterateRomanUrdu(text: string): string {
-  // Replace known words with their Urdu script equivalents
   return text.replace(/[\w\u0600-\u06FF]+/g, (word) => {
     const lower = word.toLowerCase();
     return romanUrduToUrdu[lower] || word;
@@ -160,14 +47,37 @@ function isLikelyRomanUrdu(text: string): boolean {
   }
   return false;
 }
-// --- END OF TRANSLITERATION ---
 
-export interface ReviewAnalysis { /* ... same as before ... */ }
-export interface ProductReviewAnalysis { /* ... same as before ... */ }
+// ============================================================================
+// INTERFACES
+// ============================================================================
+export interface ReviewAnalysis {
+  sentimentScore: number;        // -1 to +1
+  sentimentLabel: 'positive' | 'negative' | 'neutral';
+  confidence: number;
+  isSpam: boolean;
+  spamReason?: string;
+  language: string;              // ISO 639-3 code
+}
 
+export interface ProductReviewAnalysis {
+  reviews: ReviewAnalysis[];
+  spamRatio: number;
+  sentimentDistribution: {
+    positive: number;
+    negative: number;
+    neutral: number;
+  };
+  averageSentiment: number;
+  uniqueReviewers: number;
+}
+
+// ============================================================================
+// SINGLETON ANALYZER
+// ============================================================================
 export class ReviewAnalyzer {
   private static instance: ReviewAnalyzer;
-  private sentimentPipeline: Pipeline | null = null;
+  private sentimentPipeline: TextClassificationPipeline | null = null;
   private embeddingPipeline: FeatureExtractionPipeline | null = null;
   private initPromise: Promise<void> | null = null;
 
@@ -184,11 +94,10 @@ export class ReviewAnalyzer {
     try {
       console.log('🔄 Loading sentiment & embedding models...');
       
-      // Load the correct ONNX model
       this.sentimentPipeline = await pipeline(
         'sentiment-analysis',
-        'Xenova/bert-base-multilingual-uncased-sentiment' // Updated model name
-      );
+        'Xenova/bert-base-multilingual-uncased-sentiment'
+      ) as TextClassificationPipeline;
 
       this.embeddingPipeline = await pipeline(
         'feature-extraction',
@@ -210,6 +119,9 @@ export class ReviewAnalyzer {
     await this.initPromise;
   }
 
+  // ==========================================================================
+  // PUBLIC API
+  // ==========================================================================
   async analyzeProductReviews(reviews: Review[]): Promise<ProductReviewAnalysis> {
     await this.ensureInitialized();
 
@@ -223,32 +135,31 @@ export class ReviewAnalyzer {
       };
     }
 
-    // 1. Preprocess reviews: Detect language and handle Roman Urdu
+    // Preprocess: language detection & Roman Urdu check
     const preprocessed = reviews.map(r => ({
       review: r,
       lang: franc(r.text, { minLength: 3 }),
       isRomanUrdu: isLikelyRomanUrdu(r.text),
     }));
 
-    // 2. Batch Sentiment Analysis
+    // Batch sentiment analysis
     const sentimentResults = await this.batchSentimentAnalysis(
       preprocessed.map(p => p.isRomanUrdu ? transliterateRomanUrdu(p.review.text) : p.review.text)
     );
 
-    // 3. Build initial analysis objects
+    // Build initial analysis objects
     const analyses: ReviewAnalysis[] = preprocessed.map((p, idx) => {
       const result = sentimentResults[idx];
-      // Model returns label like '1 star', '2 stars', etc.
-      const starRating = parseInt(result.label.split(' ')[0]); // 1-5
+      const starRating = parseInt(result.label.split(' ')[0]); // "5 stars" → 5
       let sentimentScore: number;
       let sentimentLabel: 'positive' | 'negative' | 'neutral';
 
       if (starRating >= 4) {
         sentimentLabel = 'positive';
-        sentimentScore = (starRating - 3) / 2; // 4→0.5, 5→1.0
+        sentimentScore = (starRating - 3) / 2; // 4 → 0.5, 5 → 1.0
       } else if (starRating <= 2) {
         sentimentLabel = 'negative';
-        sentimentScore = (starRating - 3) / 2; // 1→-1.0, 2→-0.5
+        sentimentScore = (starRating - 3) / 2; // 1 → -1.0, 2 → -0.5
       } else {
         sentimentLabel = 'neutral';
         sentimentScore = 0;
@@ -263,10 +174,10 @@ export class ReviewAnalyzer {
       };
     });
 
-    // 4. Spam Detection (using embeddings)
+    // Spam detection (embeddings for same-reviewer similarity)
     await this.batchSpamDetection(reviews, analyses, preprocessed);
 
-    // 5. Aggregate Statistics
+    // Aggregate statistics
     const spamCount = analyses.filter(a => a.isSpam).length;
     const spamRatio = spamCount / reviews.length;
     
@@ -294,9 +205,12 @@ export class ReviewAnalyzer {
     };
   }
 
+  // ==========================================================================
+  // PRIVATE HELPERS
+  // ==========================================================================
   private async batchSentimentAnalysis(texts: string[]): Promise<any[]> {
     const results: any[] = [];
-    const chunkSize = 32; // Process in chunks to manage memory
+    const chunkSize = 32;
     for (let i = 0; i < texts.length; i += chunkSize) {
       const chunk = texts.slice(i, i + chunkSize);
       const chunkResults = await Promise.all(
@@ -312,18 +226,17 @@ export class ReviewAnalyzer {
     analyses: ReviewAnalysis[],
     preprocessed: any[]
   ): Promise<void> {
-    // ... (This method remains largely the same as previously provided) ...
     // 1. Fast heuristic checks
     for (let i = 0; i < reviews.length; i++) {
       const review = reviews[i];
       const analysis = analyses[i];
 
-      // Rating-sentiment mismatch (high rating, negative text)
-      if (review.rating >= 4 && analysis.sentimentLabel === 'negative') {
-        analysis.isSpam = true;
-        analysis.spamReason = 'Rating-sentiment mismatch (high rating, negative text)';
-        continue;
-      }
+      // Rating-sentiment mismatch
+      // if (review.rating >= 4 && analysis.sentimentLabel === 'negative') {
+      //   analysis.isSpam = true;
+      //   analysis.spamReason = 'Rating-sentiment mismatch (high rating, negative text)';
+      //   continue;
+      // }
 
       // Very short generic review
       if (review.text.length < 15 && /^(good|nice|great|ok|bad|poor|achi|kharab|bakwas)$/i.test(review.text.trim())) {
@@ -340,7 +253,7 @@ export class ReviewAnalyzer {
         continue;
       }
 
-      // Suspicious reviewer name pattern (e.g., "A123")
+      // Suspicious reviewer name pattern
       if (review.reviewerName && /^[A-Z]\d+$/.test(review.reviewerName)) {
         analysis.isSpam = true;
         analysis.spamReason = 'Suspicious reviewer name pattern';
@@ -348,7 +261,7 @@ export class ReviewAnalyzer {
       }
     }
 
-    // 2. Semantic similarity for same-reviewer reviews (only for those not yet flagged)
+    // 2. Semantic similarity for same-reviewer groups
     const reviewerGroups: Record<string, number[]> = {};
     for (let i = 0; i < reviews.length; i++) {
       if (analyses[i].isSpam) continue;
@@ -358,7 +271,7 @@ export class ReviewAnalyzer {
       reviewerGroups[name].push(i);
     }
 
-    for (const [name, indices] of Object.entries(reviewerGroups)) {
+    for (const indices of Object.values(reviewerGroups)) {
       if (indices.length < 2) continue;
 
       const groupTexts = indices.map(i => reviews[i].text);
