@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseUserQuery } from '../../lib/queryParser';
-import { searchProducts } from '../../lib/searchEngine';
-import { rankProducts, generateExplanation } from '../../lib/rankingEngine';
 import { getFromCache, setToCache } from '../../lib/cache';
 import { ChatResponse } from '../../types';
 
@@ -29,15 +27,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('Parsed Query:', parsedQuery);
     
     //search products
-    const searchResults = searchProducts(parsedQuery);
-    console.log('Search Results:', searchResults.length);
+  
     
     //rank products
-    const rankedProducts = rankProducts(searchResults, parsedQuery);
-    console.log('Ranked Products:', rankedProducts.length);
+   
     
     //generate explanation
-    const explanation = generateExplanation(rankedProducts, parsedQuery);
     
     //final response
     const response: ChatResponse = {
