@@ -9,8 +9,10 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "lint": "eslint",
-    "test:ranking": "tsx app/lib/ranking/test-constraints.ts",
-    "dev:ranking": "tsx --watch app/lib/ranking/test-ranking.ts"
+    "test:ranking": "tsx app/lib/ranking/test-ranking.ts",
+    "test:constraints": "tsx app/lib/ranking/test-constraints.ts",
+    "dev:ranking": "tsx --watch app/lib/ranking/test-ranking.ts",
+    "download-models": "tsx scripts/download-models.ts"
   },
   "dependencies": {
     "@xenova/transformers": "^2.17.2",

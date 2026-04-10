@@ -11,10 +11,14 @@ export class RankingEngine {
     this.scorer = new ProductScorer();
   }
 
-  rankProducts(products: Product[], userQuery: string): RankedProduct[] {
-    // 1. Extract constraints from query
+  /**
+   * Rank products based on user query.
+   * Now async because constraint extraction uses ML models.
+   */
+  async rankProducts(products: Product[], userQuery: string): Promise<RankedProduct[]> {
+    // 1. Extract constraints from query (async)
     const extractor = new ConstraintExtractor(userQuery);
-    const constraints = extractor.extract();
+    const constraints = await extractor.extract();
 
     // 2. Score each product
     const scoredProducts = products.map(product => {
