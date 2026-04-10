@@ -64,17 +64,13 @@
 //   }
 // }
 
-// lib/ranking/constraintExtractor.ts
+/// lib/ranking/constraintExtractor.ts
 import nlp from 'compromise';
-// import compromiseDependencies from 'compromise-dependencies';
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline } from '@xenova/transformers';
 import { distance as levenshtein } from 'fastest-levenshtein';
 
-// Add dependency parsing plugin
-// nlp.extend(compromiseDependencies);
-
 export interface ExtractedConstraint {
-  type: 'price' | 'rating' | 'brand' | 'feature' | 'excluded_feature' | 'color' | 'connectivity';
+  type: 'price' | 'rating' | 'brand' | 'feature' | 'excluded_feature';
   value: any;
   confidence: number;
   sourceText?: string;
@@ -88,29 +84,41 @@ export interface UserConstraints {
   brands: string[];
   desiredFeatures: string[];
   excludedFeatures: string[];
-  colors: string[];
-  connectivity: string[]; // e.g., "bluetooth", "wired"
   rawQuery: string;
-  constraints: ExtractedConstraint[]; // all extracted with confidence
+  constraints: ExtractedConstraint[];
 }
 
 export class ConstraintExtractor {
   private query: string;
   private doc: any;
   private static featureEmbedder: any = null;
+  private static nerModel: any = null;
   private static cachedCanonicalEmbeddings: number[][] | null = null;
-  
-  // Dynamic canonical features (should be built from product catalog)
   private static canonicalFeatures: string[] = [];
-  
-  // Common colors and connectivity terms
-  private static readonly colors = new Set([
-    'black', 'white', 'red', 'blue', 'green', 'silver', 'gold', 'pink', 'purple', 'grey', 'gray'
-  ]);
-  private static readonly connectivity = new Set(['bluetooth', 'wired', 'wireless', 'usb-c', '3.5mm']);
-  private static readonly knownBrands = new Set([
-    'sony', 'bose', 'sennheiser', 'apple', 'samsung', 'jbl', 'anker', 'beats',
-    'skullcandy', 'philips', 'audio technica', 'logitech', 'razer', 'corsair'
+
+  private static readonly currencyMap: Record<string, string> = {
+    '$': 'USD', 'usd': 'USD', '€': 'EUR', 'eur': 'EUR', '£': 'GBP', 'gbp': 'GBP',
+    '₹': 'INR', 'inr': 'INR', 'pkr': 'PKR', 'rs': 'PKR', '₨': 'PKR'
+  };
+
+  private static readonly stopwords = new Set([
+    'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours',
+    'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers',
+    'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves',
+    'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'is', 'are',
+    'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does',
+    'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until',
+    'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into',
+    'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down',
+    'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
+    'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more',
+    'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so',
+    'than', 'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 'should', 'now',
+    'want', 'need', 'looking', 'look', 'like', 'prefer', 'must', 'best', 'good', 'great',
+    'budget', 'cheap', 'expensive', 'under', 'above', 'below', 'max', 'min', 'rs', 'pkr',
+    'usd', 'inr', 'eur', 'gbp', 'headphones', 'headphone', 'earphones', 'earphone',
+    'earbuds', 'buds', 'phone', 'tv', 'television', 'laptop', 'mouse', 'keyboard',
+    'shoes', 'shoe', 'jeans', 'denim', 'heels', 'heel', 'size', 'color', 'colour'
   ]);
 
   constructor(query: string) {
@@ -119,193 +127,301 @@ export class ConstraintExtractor {
   }
 
   static initializeCanonicalFeatures(productSpecs: Set<string>) {
-    // Build from all product specification keys across the catalog
     ConstraintExtractor.canonicalFeatures = Array.from(productSpecs);
+    ConstraintExtractor.cachedCanonicalEmbeddings = null;
   }
 
   async extract(): Promise<UserConstraints> {
-    if (!ConstraintExtractor.featureEmbedder) {
-      // Use a better model for production (larger, more accurate)
-      ConstraintExtractor.featureEmbedder = await pipeline(
-        'feature-extraction',
-        'Xenova/all-mpnet-base-v2'  // Better than MiniLM
-      );
-    }
+    await this.initializeModels();
 
     const constraints: UserConstraints = {
-      currency: 'PKR',
+      currency: 'USD',
       brands: [],
       desiredFeatures: [],
       excludedFeatures: [],
-      colors: [],
-      connectivity: [],
       rawQuery: this.query,
       constraints: [],
     };
 
-    // 1. Robust price extraction
-    this.extractPrice(constraints);
-    
-    // 2. Rating extraction
+    // Order matters: price and rating first to avoid conflicts
     this.extractRating(constraints);
-    
-    // 3. Brand extraction (improved)
-    this.extractBrands(constraints);
-    
-    // 4. Color and connectivity extraction (simple keyword)
-    this.extractSimpleAttributes(constraints);
-    
-    // 5. Semantic feature extraction with dynamic ontology + fuzzy fallback
-    await this.extractFeaturesSemantic(constraints);
-    
-    // 6. Dependency‑aware negation
+    this.extractPrice(constraints);
+    await this.extractBrands(constraints);
     this.extractExcludedFeatures(constraints);
-    
+    await this.extractDesiredFeatures(constraints);
+
     // Deduplicate
     constraints.desiredFeatures = [...new Set(constraints.desiredFeatures)];
     constraints.excludedFeatures = [...new Set(constraints.excludedFeatures)];
     constraints.brands = [...new Set(constraints.brands)];
-    
+
     return constraints;
   }
 
-  private extractPrice(constraints: UserConstraints): void {
-    // Robust price regex with currency detection
-    const priceRegex = /(?:rs\.?|pkr|usd|\$|€|£|₹)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:-|–|to)\s*(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i;
-    const singlePriceRegex = /(?:rs\.?|pkr|usd|\$|€|£|₹)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/gi;
-    const maxRegex = /(?:under|less than|below|max|upto)\s*(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i;
-    const minRegex = /(?:above|more than|min|at least|over)\s*(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/i;
-
-    const cleanNumber = (s: string) => parseFloat(s.replace(/,/g, ''));
-    
-    // Detect currency from query
-    if (this.query.includes('usd') || this.query.includes('$')) constraints.currency = 'USD';
-    else if (this.query.includes('eur') || this.query.includes('€')) constraints.currency = 'EUR';
-    else if (this.query.includes('pkr') || this.query.includes('rs')) constraints.currency = 'PKR';
-
-    // Range
-    let match = this.query.match(priceRegex);
-    if (match) {
-      constraints.minPrice = cleanNumber(match[1]);
-      constraints.maxPrice = cleanNumber(match[2]);
-      constraints.constraints.push({ type: 'price', value: { min: constraints.minPrice, max: constraints.maxPrice }, confidence: 0.98, sourceText: match[0] });
-      return;
+  private async initializeModels() {
+    if (!ConstraintExtractor.featureEmbedder) {
+      ConstraintExtractor.featureEmbedder = await pipeline(
+        'feature-extraction',
+        'Xenova/all-mpnet-base-v2'
+      );
     }
-    
-    // Max only
-    match = this.query.match(maxRegex);
-    if (match) {
-      constraints.maxPrice = cleanNumber(match[1]);
-      constraints.constraints.push({ type: 'price', value: { max: constraints.maxPrice }, confidence: 0.9, sourceText: match[0] });
-    }
-    
-    // Min only
-    match = this.query.match(minRegex);
-    if (match) {
-      constraints.minPrice = cleanNumber(match[1]);
-      constraints.constraints.push({ type: 'price', value: { min: constraints.minPrice }, confidence: 0.9, sourceText: match[0] });
-    }
-    
-    // Fallback: any number near currency symbol
-    if (constraints.minPrice === undefined && constraints.maxPrice === undefined) {
-      const matches = [...this.query.matchAll(singlePriceRegex)];
-      if (matches.length === 1) {
-        const val = cleanNumber(matches[0][1]);
-        constraints.maxPrice = val;
-        constraints.constraints.push({ type: 'price', value: { max: val }, confidence: 0.6, sourceText: matches[0][0] });
-      }
+    if (!ConstraintExtractor.nerModel) {
+      ConstraintExtractor.nerModel = await pipeline(
+        'token-classification',
+        'Xenova/bert-base-NER'
+      );
     }
   }
 
   private extractRating(constraints: UserConstraints): void {
-    const ratingRegex = /(\d+(?:\.\d+)?)\s*(?:\+|\s*star|\s*rating| and above| or higher)/i;
-    const match = this.query.match(ratingRegex);
+    const patterns = [
+      /(\d+(?:\.\d+)?)\s*(?:\+?\s*stars?(?:\s+and\s+above)?|\s*rating)/i,
+      /(?:rating|stars?)\s*(?:of\s*)?(\d+(?:\.\d+)?)/i,
+      /at\s+least\s+(\d+(?:\.\d+)?)\s*stars?/i,
+      /(\d+(?:\.\d+)?)\s*\+\s*stars?/i
+    ];
+
+    for (const regex of patterns) {
+      const match = this.query.match(regex);
+      if (match) {
+        const rating = parseFloat(match[1]);
+        if (rating >= 0 && rating <= 5) {
+          constraints.minRating = rating;
+          constraints.constraints.push({
+            type: 'rating',
+            value: rating,
+            confidence: 0.9,
+            sourceText: match[0]
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  private extractPrice(constraints: UserConstraints): void {
+    // Detect currency
+    for (const [symbol, curr] of Object.entries(ConstraintExtractor.currencyMap)) {
+      if (this.query.includes(symbol.toLowerCase())) {
+        constraints.currency = curr;
+        break;
+      }
+    }
+
+    const normalizedQuery = this.query.replace(/(\d),(?=\d{3})/g, '$1');
+
+    // Patterns with negative lookahead to avoid rating numbers
+    const rangePattern = /(?:between\s+)?(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d+(?:\.\d+)?)\s*(?:-|–|to|and)\s*(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d+(?:\.\d+)?)(?!\s*star|\s*rating)/i;
+    const maxPattern = /(?:under|less\s+than|below|max|upto|up\s+to|at\s+most)\s+(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d+(?:\.\d+)?)(?!\s*star|\s*rating)/i;
+    const minPattern = /(?:above|more\s+than|min|at\s+least|over)\s+(?:rs\.?|pkr|usd|\$|€|£|₹)?\s*(\d+(?:\.\d+)?)(?!\s*star|\s*rating)/i;
+
+    const cleanNumber = (s: string) => parseFloat(s);
+
+    // Try range first
+    let match = normalizedQuery.match(rangePattern);
     if (match) {
-      constraints.minRating = parseFloat(match[1]);
-      constraints.constraints.push({ type: 'rating', value: constraints.minRating, confidence: 0.85, sourceText: match[0] });
+      constraints.minPrice = cleanNumber(match[1]);
+      constraints.maxPrice = cleanNumber(match[2]);
+      constraints.constraints.push({
+        type: 'price',
+        value: { min: constraints.minPrice, max: constraints.maxPrice },
+        confidence: 0.95,
+        sourceText: match[0]
+      });
+      return;
+    }
+
+    // Max only
+    match = normalizedQuery.match(maxPattern);
+    if (match) {
+      constraints.maxPrice = cleanNumber(match[1]);
+      constraints.constraints.push({
+        type: 'price',
+        value: { max: constraints.maxPrice },
+        confidence: 0.9,
+        sourceText: match[0]
+      });
+    }
+
+    // Min only (only if not already set by rating)
+    match = normalizedQuery.match(minPattern);
+    if (match) {
+      const val = cleanNumber(match[1]);
+      // Heuristic: if value > 5 it's probably price, not rating
+      if (val > 5 || !this.query.includes('star')) {
+        constraints.minPrice = val;
+        constraints.constraints.push({
+          type: 'price',
+          value: { min: val },
+          confidence: 0.85,
+          sourceText: match[0]
+        });
+      }
+    }
+
+    // Fallback: single price mention
+    if (constraints.minPrice === undefined && constraints.maxPrice === undefined) {
+      const singleRegex = /(?:rs\.?|pkr|usd|\$|€|£|₹)\s*(\d+(?:\.\d+)?)(?!\s*star|\s*rating)/gi;
+      const matches = [...normalizedQuery.matchAll(singleRegex)];
+      if (matches.length === 1) {
+        const val = cleanNumber(matches[0][1]);
+        constraints.maxPrice = val;
+        constraints.constraints.push({
+          type: 'price',
+          value: { max: val },
+          confidence: 0.6,
+          sourceText: matches[0][0]
+        });
+      }
     }
   }
 
-  private extractBrands(constraints: UserConstraints): void {
-    // Use compromise to find proper nouns and nouns adjacent to "brand"
-    const brandContext = this.doc.match('(brand|from|by) #ProperNoun').out('array');
-    const properNouns = this.doc.match('#ProperNoun').out('array');
-    const allCandidates = [...brandContext, ...properNouns];
-    
-    for (const noun of allCandidates) {
-      const lower = noun.toLowerCase();
-      if (ConstraintExtractor.knownBrands.has(lower)) {
-        constraints.brands.push(lower);
-        constraints.constraints.push({ type: 'brand', value: lower, confidence: 0.95, sourceText: noun });
+  private async extractBrands(constraints: UserConstraints): Promise<void> {
+    try {
+      const nerResults = await ConstraintExtractor.nerModel(this.query);
+      
+      // Group entities
+      const entities: Array<{ word: string; entity: string; index: number }> = nerResults;
+      const brands: string[] = [];
+      let currentBrand = '';
+      
+      for (let i = 0; i < entities.length; i++) {
+        const item = entities[i];
+        if (item.entity === 'B-ORG' || item.entity === 'B-MISC') {
+          currentBrand = item.word;
+          // Look ahead for continuation
+          let j = i + 1;
+          while (j < entities.length && entities[j].entity === 'I-ORG') {
+            currentBrand += ' ' + entities[j].word;
+            j++;
+          }
+          brands.push(currentBrand.toLowerCase());
+          i = j - 1;
+        }
       }
-    }
-    
-    // Also check bigrams
-    const terms = this.doc.terms().out('array');
-    for (let i = 0; i < terms.length - 1; i++) {
-      const bigram = `${terms[i]} ${terms[i+1]}`.toLowerCase();
-      if (ConstraintExtractor.knownBrands.has(bigram)) {
-        constraints.brands.push(bigram);
-        constraints.constraints.push({ type: 'brand', value: bigram, confidence: 0.9, sourceText: bigram });
+
+      // Also use compromise for proper nouns not caught by NER
+      const properNouns = this.doc.match('#ProperNoun').out('array');
+      const allCandidates = [...new Set([...brands, ...properNouns])];
+      
+      for (const candidate of allCandidates) {
+        const lower = candidate.toLowerCase();
+        if (lower.length > 2 && !ConstraintExtractor.stopwords.has(lower)) {
+          constraints.brands.push(lower);
+          constraints.constraints.push({
+            type: 'brand',
+            value: lower,
+            confidence: 0.85,
+            sourceText: candidate
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('NER error, falling back to proper nouns:', error);
+      const properNouns = this.doc.match('#ProperNoun').out('array');
+      for (const noun of properNouns) {
+        const lower = noun.toLowerCase();
+        if (lower.length > 2 && !ConstraintExtractor.stopwords.has(lower)) {
+          constraints.brands.push(lower);
+          constraints.constraints.push({
+            type: 'brand',
+            value: lower,
+            confidence: 0.7,
+            sourceText: noun
+          });
+        }
       }
     }
   }
 
-  private extractSimpleAttributes(constraints: UserConstraints): void {
-    const words = this.query.split(/\W+/);
-    words.forEach(w => {
-      if (ConstraintExtractor.colors.has(w)) {
-        constraints.colors.push(w);
-        constraints.constraints.push({ type: 'color', value: w, confidence: 0.8, sourceText: w });
+  private extractExcludedFeatures(constraints: UserConstraints): void {
+    // Regex-based negation extraction (more reliable than compromise for this)
+    const negationPatterns = [
+      /\bno\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bwithout\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bnot\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bexcept\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bavoid\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bdont\s+want\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bdo\s+not\s+want\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|\bbut\b|please|thanks))/g,
+      /\bbut\s+not\s+([a-z0-9\s]+?)(?=\s*(?:,|\.|$|\band\b|\bor\b|please|thanks))/g,
+    ];
+
+    for (const pattern of negationPatterns) {
+      let match;
+      while ((match = pattern.exec(this.query)) !== null) {
+        let phrase = match[1].trim();
+        // Clean up trailing punctuation
+        phrase = phrase.replace(/[,.!?;]$/, '').trim();
+        if (phrase.length > 1 && !ConstraintExtractor.stopwords.has(phrase)) {
+          constraints.excludedFeatures.push(phrase);
+          constraints.constraints.push({
+            type: 'excluded_feature',
+            value: phrase,
+            confidence: 0.9,
+            sourceText: match[0]
+          });
+        }
       }
-      if (ConstraintExtractor.connectivity.has(w)) {
-        constraints.connectivity.push(w);
-        constraints.constraints.push({ type: 'connectivity', value: w, confidence: 0.8, sourceText: w });
-      }
-    });
+    }
   }
 
-  private async extractFeaturesSemantic(constraints: UserConstraints): Promise<void> {
-    // If canonical features not initialized, skip or use fallback
+  private async extractDesiredFeatures(constraints: UserConstraints): Promise<void> {
     if (ConstraintExtractor.canonicalFeatures.length === 0) {
-      console.warn('Canonical features not initialized. Using keyword fallback.');
       this.fallbackKeywordFeatures(constraints);
       return;
     }
 
-    // Extract noun phrases from desire clauses
-      const desireClauses = this.doc.match('(want|need|looking for|must have|like|prefer|with|having|good) .').out('text');
-      const desireDoc = nlp(desireClauses);
-      
-      // Explicitly cast to string[] to avoid TypeScript inference issues
-      const nounPhrases = desireDoc.nouns().out('array') as string[];
-      const adjNounPhrases = desireDoc.match('#Adjective #Noun').out('array') as string[];
-      
-      const phrases = [...new Set([...nounPhrases, ...adjNounPhrases])]
-        .map((p: string) => p.toLowerCase().trim())
-        .filter(p => p.length > 0);
+    // Extract noun phrases and adjective-noun combinations
+    const nouns = this.doc.nouns().out('array') as string[];
+    const adjNoun = this.doc.match('#Adjective #Noun').out('array') as string[];
+    const properNouns = this.doc.match('#ProperNoun').out('array') as string[];
+    
+    let rawPhrases = [...nouns, ...adjNoun, ...properNouns]
+      .map(p => p.toLowerCase().trim())
+      .filter(p => p.length > 1 && !this.isStopwordOrNoise(p));
 
-      if (phrases.length === 0) return;
+    // Split on common conjunctions
+    const splitPhrases: string[] = [];
+    for (const phrase of rawPhrases) {
+      if (/\band\b|\bor\b|\/|,/.test(phrase)) {
+        phrase.split(/\band\b|\bor\b|\/|,/).forEach(part => {
+          const cleaned = part.trim();
+          if (cleaned.length > 1 && !this.isStopwordOrNoise(cleaned)) {
+            splitPhrases.push(cleaned);
+          }
+        });
+      } else {
+        splitPhrases.push(phrase);
+      }
+    }
 
-    // Encode canonical features once and cache
+    // Remove brands and excluded features from desired
+    const brandSet = new Set(constraints.brands);
+    const excludedSet = new Set(constraints.excludedFeatures);
+    const phrases = [...new Set(splitPhrases)]
+      .filter(p => !brandSet.has(p) && !excludedSet.has(p));
+
+    if (phrases.length === 0) return;
+
+    // Encode canonical features once
     if (!ConstraintExtractor.cachedCanonicalEmbeddings) {
       const canonicalTexts = ConstraintExtractor.canonicalFeatures;
-      const embeddings = await ConstraintExtractor.featureEmbedder(canonicalTexts, {
+      const embTensor = await ConstraintExtractor.featureEmbedder(canonicalTexts, {
         pooling: 'mean',
         normalize: true,
       });
-      ConstraintExtractor.cachedCanonicalEmbeddings = embeddings;
+      ConstraintExtractor.cachedCanonicalEmbeddings = embTensor.tolist ? embTensor.tolist() : Array.from(embTensor);
     }
 
-// Later, when you need to read it:
-
-    const phraseEmbeddings = await ConstraintExtractor.featureEmbedder(phrases, { pooling: 'mean', normalize: true });
+    const phraseEmbTensor = await ConstraintExtractor.featureEmbedder(phrases, { pooling: 'mean', normalize: true });
+    const phraseEmbs = phraseEmbTensor.tolist ? phraseEmbTensor.tolist() : Array.from(phraseEmbTensor);
     const canonicalEmbs = ConstraintExtractor.cachedCanonicalEmbeddings!;
 
-    
-    const threshold = 0.65;
+    const SIMILARITY_THRESHOLD = 0.55;
+
     for (let i = 0; i < phrases.length; i++) {
-      const phraseEmb = phraseEmbeddings[i];
+      const phraseEmb = phraseEmbs[i];
       let bestScore = -1;
       let bestFeature = '';
       
@@ -316,8 +432,8 @@ export class ConstraintExtractor {
           bestFeature = ConstraintExtractor.canonicalFeatures[j];
         }
       }
-      
-      if (bestScore >= threshold) {
+
+      if (bestScore >= SIMILARITY_THRESHOLD) {
         constraints.desiredFeatures.push(bestFeature);
         constraints.constraints.push({
           type: 'feature',
@@ -326,14 +442,14 @@ export class ConstraintExtractor {
           sourceText: phrases[i]
         });
       } else {
-        // Fuzzy string match as fallback
-        const fuzzyMatch = this.fuzzyMatchFeature(phrases[i]);
+        // Fuzzy fallback
+        const fuzzyMatch = this.fuzzyMatch(phrases[i]);
         if (fuzzyMatch) {
           constraints.desiredFeatures.push(fuzzyMatch);
           constraints.constraints.push({
             type: 'feature',
             value: fuzzyMatch,
-            confidence: 0.6,
+            confidence: 0.65,
             sourceText: phrases[i]
           });
         } else {
@@ -350,25 +466,32 @@ export class ConstraintExtractor {
     }
   }
 
-  private fallbackKeywordFeatures(constraints: UserConstraints): void {
-    // Simple keyword fallback when embeddings not ready
-    const featureKeywords = [
-      'battery', 'sound quality', 'noise cancel', 'wireless', 'bluetooth',
-      'waterproof', 'durable', 'comfort', 'bass', 'mic', 'microphone',
-      'gaming', 'lightweight', 'fast charging', 'long lasting'
-    ];
-    featureKeywords.forEach(f => {
-      if (this.query.includes(f)) {
-        constraints.desiredFeatures.push(f);
-        constraints.constraints.push({ type: 'feature', value: f, confidence: 0.7, sourceText: f });
-      }
-    });
+  private isStopwordOrNoise(word: string): boolean {
+    if (ConstraintExtractor.stopwords.has(word)) return true;
+    // Exclude numbers and currency symbols
+    if (/^\d+(?:\.\d+)?$/.test(word)) return true;
+    if (/^[$€£₹]/.test(word)) return true;
+    return false;
   }
 
-  private fuzzyMatchFeature(phrase: string): string | null {
+  private fallbackKeywordFeatures(constraints: UserConstraints): void {
+    const terms = this.doc.terms().out('array');
+    const nouns = this.doc.nouns().out('array');
+    const adjectives = this.doc.adjectives().out('array');
+    const candidates = [...new Set([...nouns, ...adjectives])]
+      .map(w => w.toLowerCase())
+      .filter(w => !this.isStopwordOrNoise(w) && w.length > 2);
+    
+    for (const c of candidates) {
+      constraints.desiredFeatures.push(c);
+      constraints.constraints.push({ type: 'feature', value: c, confidence: 0.4, sourceText: c });
+    }
+  }
+
+  private fuzzyMatch(phrase: string): string | null {
     let bestMatch: string | null = null;
     let bestDist = Infinity;
-    const maxDist = 3;
+    const maxDist = Math.floor(phrase.length * 0.3);
     
     for (const feat of ConstraintExtractor.canonicalFeatures) {
       const dist = levenshtein(phrase, feat);
@@ -380,25 +503,6 @@ export class ConstraintExtractor {
     return bestMatch;
   }
 
-  private extractExcludedFeatures(constraints: UserConstraints): void {
-  // Compromise can match negated phrases directly:
-    const negClauses = this.doc
-      .match('(no|without|avoid|dont want|do not want|never|not) [#Noun+]')
-      .out('array');
-
-    negClauses.forEach((clause: string) => {
-      // Extract only the noun part (e.g., "wireless" from "no wireless")
-      const noun = clause.replace(/^(no|without|avoid|dont want|do not want|never|not)\s+/i, '');
-      constraints.excludedFeatures.push(noun.toLowerCase());
-      constraints.constraints.push({
-        type: 'excluded_feature',
-        value: noun.toLowerCase(),
-        confidence: 0.85,
-        sourceText: clause,
-      });
-    });
-  }
-
   private cosineSimilarity(a: number[], b: number[]): number {
     let dot = 0, magA = 0, magB = 0;
     for (let i = 0; i < a.length; i++) {
@@ -406,8 +510,7 @@ export class ConstraintExtractor {
       magA += a[i] * a[i];
       magB += b[i] * b[i];
     }
-    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+    const mag = Math.sqrt(magA) * Math.sqrt(magB);
+    return mag === 0 ? 0 : dot / mag;
   }
-
-  // private static cachedCanonicalEmbeddings: any = null;
 }
