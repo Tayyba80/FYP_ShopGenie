@@ -47,7 +47,9 @@ export interface RankedProduct {
     ratingScore: number;
     sentimentScore: number;
     featureScore: number;
-    authenticityPenalty: number;
+    credibilityFactor: number;      // replaces authenticityPenalty
+    hardConstraintPenalty: number;   // new
+    total: number;
   };
   matchingFeatures: string[];
   sentimentSummary: {
@@ -55,6 +57,7 @@ export interface RankedProduct {
     negative: number;
     neutral: number;
     spamRatio: number;
+    confidence: number;
   };
-  rankingReason: string; // concise reason for explanation module
+  rankingReason: string;
 }
