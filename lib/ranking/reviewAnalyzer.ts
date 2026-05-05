@@ -1,4 +1,4 @@
-import { Review } from '@/types/product';
+import { Review } from '../../types/product';
 import { 
   pipeline, 
   env, 
@@ -47,7 +47,6 @@ function isLikelyRomanUrdu(text: string): boolean {
   }
   return false;
 }
-
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -80,6 +79,8 @@ export class ReviewAnalyzer {
   private sentimentPipeline: TextClassificationPipeline | null = null;
   private embeddingPipeline: FeatureExtractionPipeline | null = null;
   private initPromise: Promise<void> | null = null;
+   private analysisCache = new Map<string, { analysis: ProductReviewAnalysis; timestamp: number }>();
+  private readonly CACHE_TTL_MS = 30 * 60 * 1000;
 
   private constructor() {}
 
@@ -122,19 +123,33 @@ export class ReviewAnalyzer {
   // ==========================================================================
   // PUBLIC API
   // ==========================================================================
-  async analyzeProductReviews(reviews: Review[]): Promise<ProductReviewAnalysis> {
+    async analyzeProductReviews(reviews: Review[], productId?: string): Promise<ProductReviewAnalysis> {
     await this.ensureInitialized();
 
+    // ⭐ CACHE CHECK: If we have a productId and a fresh cache entry, return it
+    if (productId && this.analysisCache.has(productId)) {
+      const cached = this.analysisCache.get(productId)!;
+      if (Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
+        console.log(`✅ Using cached review analysis for product ${productId}`);
+        return cached.analysis;
+      }
+    }
+
     if (!reviews.length) {
-      return {
+      const emptyResult = {
         reviews: [],
         spamRatio: 0,
         sentimentDistribution: { positive: 0, negative: 0, neutral: 0 },
         averageSentiment: 0,
         uniqueReviewers: 0,
       };
+      if (productId) {
+        this.analysisCache.set(productId, { analysis: emptyResult, timestamp: Date.now() });
+      }
+      return emptyResult;
     }
 
+    // --- Existing analysis logic (unchanged) ---
     // Preprocess: language detection & Roman Urdu check
     const preprocessed = reviews.map(r => ({
       review: r,
@@ -156,10 +171,10 @@ export class ReviewAnalyzer {
 
       if (starRating >= 4) {
         sentimentLabel = 'positive';
-        sentimentScore = (starRating - 3) / 2; // 4 → 0.5, 5 → 1.0
+        sentimentScore = (starRating - 3) / 2;
       } else if (starRating <= 2) {
         sentimentLabel = 'negative';
-        sentimentScore = (starRating - 3) / 2; // 1 → -1.0, 2 → -0.5
+        sentimentScore = (starRating - 3) / 2;
       } else {
         sentimentLabel = 'neutral';
         sentimentScore = 0;
@@ -196,13 +211,20 @@ export class ReviewAnalyzer {
       reviews.map(r => r.reviewerName?.toLowerCase().trim()).filter(Boolean)
     ).size;
 
-    return {
+    const result: ProductReviewAnalysis = {
       reviews: analyses,
       spamRatio,
       sentimentDistribution: distribution,
       averageSentiment,
       uniqueReviewers,
     };
+
+    // ⭐ STORE IN CACHE before returning
+    if (productId) {
+      this.analysisCache.set(productId, { analysis: result, timestamp: Date.now() });
+    }
+
+    return result;
   }
 
   // ==========================================================================

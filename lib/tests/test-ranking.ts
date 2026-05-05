@@ -109,9 +109,9 @@
 // test-ranking.ts
 // Run with: npx tsx lib/ranking/test-ranking.ts
 
-import { RankingEngine } from './rankingEngine';
-import { ConstraintExtractor } from './constraintExtractor';
-import { Product } from '@/types/product';
+import { RankingEngine } from '../ranking/rankingEngine';
+import { ConstraintExtractor } from '../ranking/constraintExtractor';
+import { Product } from '../../types/product';
 
 // ----------------------------------------------------------------------
 // Dummy product generators for different categories

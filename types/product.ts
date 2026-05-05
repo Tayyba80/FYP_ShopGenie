@@ -47,8 +47,8 @@ export interface RankedProduct {
     ratingScore: number;
     sentimentScore: number;
     featureScore: number;
-    credibilityFactor: number;      // replaces authenticityPenalty
-    hardConstraintPenalty: number;   // new
+    credibilityFactor: number;      
+    hardConstraintPenalty: number;   
     total: number;
   };
   matchingFeatures: string[];

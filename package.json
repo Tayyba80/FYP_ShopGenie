@@ -9,10 +9,10 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "lint": "eslint",
-    "test:ranking": "tsx app/lib/ranking/test-ranking.ts",
-    "test:constraints": "tsx app/lib/ranking/test-constraints.ts",
-    "test:reviews": "tsx app/lib/ranking/test-reviews.ts",
-    "dev:ranking": "tsx --watch app/lib/ranking/test-ranking.ts",
+    "test:ranking": "tsx lib/tests/testRanking.ts",
+    "test:constraints": "tsx lib/tests/test-constraints.ts",
+    "test:reviews": "tsx lib/tests/test-reviews.ts",
+    "dev:rankings": "tsx --watch lib/tests/test-ranking.ts",
     "download:models": "tsx scripts/download-constraint-models.ts && tsx scripts/download-review-models.ts"
   },
   "dependencies": {

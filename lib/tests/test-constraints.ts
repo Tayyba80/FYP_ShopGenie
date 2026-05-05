@@ -1,7 +1,7 @@
 // test-constraint-extractor.ts
 // Run with: npx tsx app/lib/ranking/test-constraint-extractor.ts
 
-import { ConstraintExtractor } from './constraintExtractor';
+import { ConstraintExtractor } from '../ranking/constraintExtractor';
 
 // ----------------------------------------------------------------------
 // 1. Initialize canonical features from a mock catalog (in production this would come from DB)

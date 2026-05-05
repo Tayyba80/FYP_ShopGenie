@@ -1,6 +1,6 @@
 // lib/ranking/rankingEngine.ts
 
-import { Product, RankedProduct } from '@/types/product';
+import { Product, RankedProduct } from '../../types/product';
 import { ConstraintExtractor, UserConstraints } from './constraintExtractor';
 import { ProductScorer, ScoringResult } from './productScorer';
 

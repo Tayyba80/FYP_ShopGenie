@@ -1,6 +1,6 @@
 // lib/ranking/productScorer.ts
 
-import { Product } from '@/types/product';
+import { Product } from '../../types/product';
 import { UserConstraints } from './constraintExtractor';
 import { ReviewAnalyzer, ProductReviewAnalysis } from './reviewAnalyzer';
 import { distance as levenshtein } from 'fastest-levenshtein';
@@ -94,15 +94,16 @@ export class ProductScorer {
    */
   async scoreProduct(product: Product, constraints: UserConstraints): Promise<ScoringResult> {
     // 1. Hard constraints check
-    const { hardConstraintViolation, missingMustHave } = this.checkHardConstraints(product, constraints);
-
+    const { hardConstraintViolation, missingMustHave, penaltyMultiplier } = this.checkHardConstraints(product, constraints);
     if (hardConstraintViolation && this.config.hardConstraints.violationPenalty <= 0.0) {
       return this.createDisqualifiedResult(missingMustHave);
     }
 
     // 2. Analyze reviews using your existing analyzer
-    const reviewAnalysis = await this.reviewAnalyzer.analyzeProductReviews(product.reviews);
-
+    const reviewAnalysis = await this.reviewAnalyzer.analyzeProductReviews(
+      product.reviews,
+      product.productId   // ⭐ pass the productId for caching
+    );
     const priceScore = this.computePriceScore(product.price.amount, constraints);
     const ratingScore = this.computeRatingScore(product.rating, reviewAnalysis);
     const sentimentScore = this.computeSentimentScore(reviewAnalysis, product.reviews);
@@ -118,7 +119,7 @@ export class ProductScorer {
       sentimentScore * adjustedWeights.sentiment +
       featureScore * adjustedWeights.feature;
 
-    const penaltyMultiplier = hardConstraintViolation ? 1 - this.config.hardConstraints.violationPenalty : 1.0;
+    //const penaltyMultiplier = hardConstraintViolation ? 1 - this.config.hardConstraints.violationPenalty : 1.0;
     const finalScore = Math.max(0, baseScore * credibilityFactor * penaltyMultiplier);
 
 
@@ -152,45 +153,48 @@ export class ProductScorer {
   // --------------------------------------------------------------------------
   // Hard Constraints (must‑haves, exclusions, brand)
   // --------------------------------------------------------------------------
+  // In ProductScorer.ts – replace the checkHardConstraints method
   private checkHardConstraints(
     product: Product,
     constraints: UserConstraints
-  ): { hardConstraintViolation: boolean; missingMustHave: string[] } {
+  ): { hardConstraintViolation: boolean; missingMustHave: string[]; penaltyMultiplier: number } {
     const missingMustHave: string[] = [];
+    let penaltyMultiplier = 1.0;
 
-    // Must-have features – we look for features prefixed with "must:"
+    // Must-have features – apply 0.5 penalty for each missing (configurable)
     const mustHaves = constraints.desiredFeatures.filter(f => f.startsWith('must:'));
     const searchText = this.buildProductSearchText(product);
 
     for (const must of mustHaves) {
       const cleanMust = must.replace(/^must:/i, '').trim();
-      if (!this.fuzzyMatch(cleanMust, searchText, 0.9)) {
+      if (!this.fuzzyMatch(cleanMust, searchText, 0.85)) { // lower threshold
         missingMustHave.push(cleanMust);
+        penaltyMultiplier *= (1 - 0.5); // 50% penalty per missing must-have
       }
     }
 
-    // Excluded features – if any excluded feature is present → violation
-    if (constraints.excludedFeatures && constraints.excludedFeatures.length > 0) {
+    // Excluded features – if present, strong penalty (0.0) still possible
+    if (constraints.excludedFeatures?.length) {
       for (const exclude of constraints.excludedFeatures) {
         if (this.fuzzyMatch(exclude, searchText, 0.7)) {
-          return { hardConstraintViolation: true, missingMustHave: [] };
+          penaltyMultiplier = 0.0; // still disqualified
+          break;
         }
       }
     }
 
-    // Brand preference – if user specified brands, product must match one of them
+    // Brand constraint – if specified and missing, strong penalty
     if (constraints.brands.length > 0) {
       const productBrandLower = product.brand?.toLowerCase() || '';
       const matchesBrand = constraints.brands.some(b => productBrandLower.includes(b.toLowerCase()));
       if (!matchesBrand) {
-        return { hardConstraintViolation: true, missingMustHave: [] };
+        penaltyMultiplier = 0.0;
       }
     }
 
-    return {
-      hardConstraintViolation: missingMustHave.length > 0,
-      missingMustHave,
-    };
+    const hardConstraintViolation = penaltyMultiplier === 0.0;
+
+    return { hardConstraintViolation, missingMustHave, penaltyMultiplier };
   }
 
   private buildProductSearchText(product: Product): string {

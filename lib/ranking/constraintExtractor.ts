@@ -29,6 +29,7 @@ export class ConstraintExtractor {
   private static nerModel: any = null;
   private static cachedCanonicalEmbeddings: number[][] | null = null;
   private static canonicalFeatures: string[] = [];
+  private static knownBrands: Set<string> = new Set();
 
   private static readonly currencyMap: Record<string, string> = {
     $: 'USD', usd: 'USD', '€': 'EUR', eur: 'EUR', '£': 'GBP', gbp: 'GBP',
@@ -55,6 +56,13 @@ export class ConstraintExtractor {
     'shoes', 'shoe', 'jeans', 'denim', 'heels', 'heel', 'size', 'color', 'colour',
     'price', 'cost', 'rupees', 'dollars', 'euros', 'pounds',
   ]);
+
+    // ⭐ INSERT THIS METHOD:
+  static setKnownBrands(brands: string[]) {
+    ConstraintExtractor.knownBrands = new Set(brands.map(b => b.toLowerCase().trim()));
+  }
+
+  // ... then the constructor and other methods ...
 
   constructor(query: string) {
     this.query = query.toLowerCase().trim();
@@ -135,15 +143,19 @@ export class ConstraintExtractor {
   }
 
   private extractPrice(constraints: UserConstraints): void {
+      const kNotationRe = /(\d+(?:\.\d+)?)\s*k\b/gi;
+      let processedQuery = this.query.replace(kNotationRe, (_, num) => {
+        return (parseFloat(num) * 1000).toString();
+      });
     // Detect currency
     for (const [symbol, curr] of Object.entries(ConstraintExtractor.currencyMap)) {
-      if (this.query.includes(symbol.toLowerCase())) {
+      if (processedQuery.includes(symbol.toLowerCase())) {
         constraints.currency = curr;
         break;
       }
     }
 
-    const normalizedQuery = this.query.replace(/(\d),(?=\d{3})/g, '$1');
+    const normalizedQuery = processedQuery.replace(/(\d),(?=\d{3})/g, '$1');
     const cleanNumber = (s: string) => parseFloat(s);
 
     // 1. FIRST: Handle negated maximums like "no more than", "not more than"
@@ -223,7 +235,28 @@ export class ConstraintExtractor {
     }
   }
 
-  private async extractBrands(constraints: UserConstraints): Promise<void> {
+    private async extractBrands(constraints: UserConstraints): Promise<void> {
+    // 1. FAST PATH: Check query words against our static knownBrands list
+    const words = this.query.split(/\s+/);
+    for (const word of words) {
+      const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, ''); // remove punctuation
+      if (cleanWord.length > 2 && ConstraintExtractor.knownBrands.has(cleanWord)) {
+        constraints.brands.push(cleanWord);
+        constraints.constraints.push({
+          type: 'brand',
+          value: cleanWord,
+          confidence: 1.0,
+          sourceText: word,
+        });
+      }
+    }
+
+    // If we already found at least one brand from the list, we can skip NER entirely
+    if (constraints.brands.length > 0) {
+      return;
+    }
+
+    // 2. FALLBACK: Use NER (existing logic) only if no brands were matched from the list
     try {
       const nerResults = await ConstraintExtractor.nerModel(this.query);
       const entities: Array<{ word: string; entity: string; index: number }> = nerResults;
@@ -244,7 +277,7 @@ export class ConstraintExtractor {
         }
       }
 
-      // Fallback to proper nouns
+      // Fallback to proper nouns if NER found nothing
       const properNouns = this.doc.match('#ProperNoun').out('array');
       const allCandidates = [...new Set([...brands, ...properNouns])];
 

@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
-import ChatInterface from './components/ChatInterface';
-import ResultDisplay from './components/ResultsDisplay';
-import { ChatResponse } from '../app/types';
+import ChatInterface from '../components/ChatInterface';
+import ResultDisplay from '../components/ResultsDisplay';
+import { ChatResponse } from '../types';
 
 export default function Home() {
   const [results, setResults] = useState<ChatResponse | null>(null);

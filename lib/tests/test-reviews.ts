@@ -1,6 +1,6 @@
 // scripts/test-review-analyzer.ts
-import { ReviewAnalyzer } from '@/lib/ranking/reviewAnalyzer';
-import { Review } from '@/types/product';
+import { ReviewAnalyzer } from '../ranking/reviewAnalyzer';
+import { Review } from '../../types/product';
 
 // -----------------------------------------------------------------------------
 // Sample reviews simulating real Daraz products
