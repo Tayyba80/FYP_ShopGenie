@@ -13,8 +13,8 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { Button } from "../../src/app/components/ui/button";
-import { Input } from "../../src/app/components/ui/input";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { useState } from "react";
 
 interface Message {

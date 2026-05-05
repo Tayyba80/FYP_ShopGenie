@@ -3,9 +3,9 @@
 import { motion } from "motion/react";
 import Link from "next/link";
 import { Sparkles, Mail, Lock } from "lucide-react";
-import { Button } from "../../src/app/components/ui/button";
-import { Input } from "../../src/app/components/ui/input";
-import { Label } from "../../src/app/components/ui/label";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { useState } from "react";
 
 export default function LoginPage() {

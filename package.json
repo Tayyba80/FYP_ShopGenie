@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "preview":"next dev --turbo",
+    "preview": "next dev --turbo",
     "clean": "Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue; Remove-Item -Force package-lock.json, pnpm-lock.yaml, pnpm-workspace.yaml -ErrorAction SilentlyContinue"
   },
   "dependencies": {
