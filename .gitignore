@@ -4,4 +4,7 @@ build/
 .next/
 .env
 node_modules
+.env.local
 
+
+/src/generated/prisma
