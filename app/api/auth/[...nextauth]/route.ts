@@ -1,4 +1,4 @@
-import NextAuth from "next-auth"
+import NextAuth, { NextAuthOptions } from "next-auth"
 import Google from "next-auth/providers/google"
 import GitHub from "next-auth/providers/github"
 import Credentials from "next-auth/providers/credentials"
@@ -6,7 +6,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 
-export const authOptions = {
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
 
   providers: [
@@ -22,7 +22,6 @@ export const authOptions = {
 
     Credentials({
       name: "credentials",
-
       credentials: {
         email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" },
@@ -54,7 +53,7 @@ export const authOptions = {
   ],
 
   session: {
-    strategy: "database", // ✅ IMPORTANT FIX
+    strategy: "database",
   },
 
   pages: {

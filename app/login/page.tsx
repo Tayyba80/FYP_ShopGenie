@@ -7,56 +7,90 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const validate = () => {
+    if (!formData.email.trim()) return "Email is required";
+    if (!/\S+@\S+\.\S+/.test(formData.email)) return "Invalid email format";
+    if (!formData.password) return "Password is required";
+    if (formData.password.length < 6) return "Password must be at least 6 characters";
+    return null;
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic here
-    console.log("Login:", formData);
+    setError("");
+
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await signIn("credentials", {
+        redirect: false,
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (!res || res.error) {
+        throw new Error("Invalid email or password");
+      }
+
+      router.push("/chat");
+    } catch (err: any) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOAuth = (provider: "google" | "github") => {
+    signIn(provider, {
+      callbackUrl: "/chat",
+    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-6">
-      {/* Animated background elements */}
+      
+      {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
-          animate={{
-            scale: [1, 1.3, 1],
-            x: [0, 100, 0],
-          }}
-          transition={{
-            duration: 15,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ scale: [1, 1.3, 1], x: [0, 100, 0] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
           className="absolute top-10 right-10 w-80 h-80 bg-blue-200 rounded-full opacity-20 blur-3xl"
         />
         <motion.div
-          animate={{
-            scale: [1.3, 1, 1.3],
-            x: [0, -100, 0],
-          }}
-          transition={{
-            duration: 15,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
+          animate={{ scale: [1.3, 1, 1.3], x: [0, -100, 0] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
           className="absolute bottom-10 left-10 w-96 h-96 bg-purple-200 rounded-full opacity-20 blur-3xl"
         />
       </div>
 
-      {/* Login Card */}
+      {/* Card */}
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 50 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         className="bg-white rounded-3xl shadow-2xl p-10 w-full max-w-md relative z-10"
       >
+        
         {/* Logo */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -75,19 +109,31 @@ export default function LoginPage() {
           </span>
         </motion.div>
 
+        {/* Heading */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3 }}
         >
-          <h2 className="text-2xl font-bold text-center mb-2">Welcome Back</h2>
+          <h2 className="text-2xl font-bold text-center mb-2">
+            Welcome Back
+          </h2>
           <p className="text-gray-600 text-center mb-8">
             Log in to continue your smart shopping journey
           </p>
         </motion.div>
 
+        {/* Error */}
+        {error && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+            {error}
+          </div>
+        )}
+
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-5">
+          
+          {/* Email */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -109,6 +155,7 @@ export default function LoginPage() {
             </div>
           </motion.div>
 
+          {/* Password */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -116,10 +163,14 @@ export default function LoginPage() {
           >
             <div className="flex items-center justify-between mb-1">
               <Label htmlFor="password">Password</Label>
-              <a href="#" className="text-sm text-purple-600 hover:underline">
+              <Link
+                href="/forgot-password"
+                className="text-sm text-purple-600 hover:underline"
+              >
                 Forgot?
-              </a>
+              </Link>
             </div>
+
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
               <Input
@@ -135,6 +186,7 @@ export default function LoginPage() {
             </div>
           </motion.div>
 
+          {/* Button */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -142,9 +194,10 @@ export default function LoginPage() {
           >
             <Button
               type="submit"
+              disabled={loading}
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-lg py-6"
             >
-              Log In
+              {loading ? "Logging in..." : "Log In"}
             </Button>
           </motion.div>
         </form>
@@ -160,18 +213,21 @@ export default function LoginPage() {
             <div className="w-full border-t border-gray-200"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-4 bg-white text-gray-500">Or continue with</span>
+            <span className="px-4 bg-white text-gray-500">
+              Or continue with
+            </span>
           </div>
         </motion.div>
 
-        {/* Social Login */}
+        {/* OAuth */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
           className="grid grid-cols-2 gap-4"
         >
-          <Button variant="outline" className="w-full">
+
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth("google")}>
             <svg className="size-5 mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
@@ -192,7 +248,8 @@ export default function LoginPage() {
             </svg>
             Google
           </Button>
-          <Button variant="outline" className="w-full">
+
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth("github")}>
             <svg className="size-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
             </svg>
@@ -201,33 +258,14 @@ export default function LoginPage() {
         </motion.div>
 
         {/* Footer */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9 }}
-          className="mt-6 text-center"
-        >
+        <div className="mt-6 text-center">
           <p className="text-gray-600">
             Don't have an account?{" "}
-            <Link
-              href="/signup"
-              className="text-purple-600 font-semibold hover:underline"
-            >
+            <Link href="/signup" className="text-purple-600 font-semibold">
               Sign up
             </Link>
           </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="mt-4 text-center"
-        >
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">
-            ← Back to home
-          </Link>
-        </motion.div>
+        </div>
       </motion.div>
     </div>
   );

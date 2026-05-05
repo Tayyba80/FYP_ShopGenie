@@ -7,7 +7,14 @@ export async function POST(req: Request) {
 
     if (!email || !password) {
       return Response.json(
-        { error: "Email and password required" },
+        { message: "Email and password required" }, // ✅ fixed
+        { status: 400 }
+      )
+    }
+
+    if (password.length < 6) {
+      return Response.json(
+        { message: "Password must be at least 6 characters" },
         { status: 400 }
       )
     }
@@ -18,7 +25,7 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       return Response.json(
-        { error: "User already exists" },
+        { message: "User already exists" }, // ✅ fixed
         { status: 409 }
       )
     }
@@ -27,7 +34,7 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.create({
       data: {
-        name,
+        name: name || "", // ✅ prevent null issues
         email,
         password: hashedPassword,
       },
@@ -42,8 +49,10 @@ export async function POST(req: Request) {
       },
     })
   } catch (err) {
+    console.error("SIGNUP ERROR:", err) // ✅ log real error
+
     return Response.json(
-      { error: "Internal server error" },
+      { message: "Internal server error" }, // ✅ fixed
       { status: 500 }
     )
   }

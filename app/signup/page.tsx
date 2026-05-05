@@ -7,163 +7,208 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function SignupPage() {
+  const router = useRouter();
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // Validation
+  const validateForm = () => {
+    if (!formData.name.trim()) return "Name is required";
+    if (!formData.email.trim()) return "Email is required";
+    if (!/\S+@\S+\.\S+/.test(formData.email)) return "Invalid email format";
+    if (!formData.password) return "Password is required";
+    if (formData.password.length < 6)
+      return "Password must be at least 6 characters";
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle signup logic here
-    console.log("Signup:", formData);
+
+    setError("");
+    setSuccess("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // 1. Create user
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Signup failed");
+      }
+
+      setSuccess("Account created successfully!");
+
+      // 2. Auto login user
+      const loginResult = await signIn("credentials", {
+        redirect: false,
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (loginResult?.ok) {
+        // 3. Redirect to chat
+        router.push("/chat");
+      } else {
+        setError("Signup successful but login failed");
+      }
+
+      // reset form
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+      });
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChange = (field: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleOAuth = (provider: "google" | "github") => {
+    signIn(provider, {
+      callbackUrl: "/chat",
+    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50 flex items-center justify-center p-6">
-      {/* Animated background elements */}
+      {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <motion.div
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+          animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
           className="absolute top-20 left-20 w-72 h-72 bg-purple-200 rounded-full opacity-20 blur-3xl"
         />
         <motion.div
-          animate={{
-            scale: [1.2, 1, 1.2],
-            rotate: [90, 0, 90],
-          }}
-          transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+          animate={{ scale: [1.2, 1, 1.2], rotate: [90, 0, 90] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
           className="absolute bottom-20 right-20 w-96 h-96 bg-blue-200 rounded-full opacity-20 blur-3xl"
         />
       </div>
 
-      {/* Signup Card */}
+      {/* Card */}
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 50 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
         className="bg-white rounded-3xl shadow-2xl p-10 w-full max-w-md relative z-10"
       >
         {/* Logo */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="flex items-center justify-center gap-2 mb-8"
-        >
-          <motion.div
-            animate={{ rotate: [0, 360] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          >
-            <Sparkles className="size-10 text-purple-600" />
-          </motion.div>
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <Sparkles className="size-10 text-purple-600" />
           <span className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
             ShopGenie
           </span>
-        </motion.div>
+        </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h2 className="text-2xl font-bold text-center mb-2">Create Account</h2>
-          <p className="text-gray-600 text-center mb-8">
-            Start finding the best deals with AI
-          </p>
-        </motion.div>
+        <h2 className="text-2xl font-bold text-center mb-2">
+          Create Account
+        </h2>
+        <p className="text-gray-600 text-center mb-6">
+          Start finding the best deals with AI
+        </p>
+
+        {/* Messages */}
+        {error && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 text-sm text-green-600 bg-green-50 p-3 rounded-lg">
+            {success}
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <Label htmlFor="name">Full Name</Label>
+          {/* Name */}
+          <div>
+            <Label>Full Name</Label>
             <div className="relative mt-1">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
               <Input
-                id="name"
-                type="text"
-                placeholder="John Doe"
-                className="pl-10"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(e) => handleChange("name", e.target.value)}
+                className="pl-10"
+                placeholder="John Doe"
               />
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-            <Label htmlFor="email">Email</Label>
+          {/* Email */}
+          <div>
+            <Label>Email</Label>
             <div className="relative mt-1">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                className="pl-10"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => handleChange("email", e.target.value)}
+                className="pl-10"
+                placeholder="you@example.com"
               />
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.6 }}
-          >
-            <Label htmlFor="password">Password</Label>
+          {/* Password */}
+          <div>
+            <Label>Password</Label>
             <div className="relative mt-1">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
               <Input
-                id="password"
                 type="password"
-                placeholder="••••••••"
-                className="pl-10"
                 value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
+                onChange={(e) => handleChange("password", e.target.value)}
+                className="pl-10"
+                placeholder="••••••••"
               />
             </div>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
+          {/* Submit */}
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-lg py-6"
           >
-            <Button
-              type="submit"
-              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-lg py-6"
-            >
-              Sign Up
-            </Button>
-          </motion.div>
+            {loading ? "Creating Account..." : "Sign Up"}
+          </Button>
         </form>
 
         {/* Divider */}
@@ -188,7 +233,7 @@ export default function SignupPage() {
           transition={{ delay: 0.8 }}
           className="grid grid-cols-2 gap-4"
         >
-          <Button variant="outline" className="w-full">
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth("google")}>
             <svg className="size-5 mr-2" viewBox="0 0 24 24">
               <path
                 fill="currentColor"
@@ -209,7 +254,7 @@ export default function SignupPage() {
             </svg>
             Google
           </Button>
-          <Button variant="outline" className="w-full">
+          <Button type="button" variant="outline" className="w-full" onClick={() => handleOAuth("github")}>
             <svg className="size-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
             </svg>
@@ -217,34 +262,15 @@ export default function SignupPage() {
           </Button>
         </motion.div>
 
-        {/* Footer */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="mt-6 text-center"
-        >
+        {/* Login link */}
+        <div className="mt-6 text-center">
           <p className="text-gray-600">
             Already have an account?{" "}
-            <Link
-              href="/login"
-              className="text-purple-600 font-semibold hover:underline"
-            >
+            <Link href="/login" className="text-purple-600 font-semibold">
               Log in
             </Link>
           </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9 }}
-          className="mt-4 text-center"
-        >
-          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700">
-            ← Back to home
-          </Link>
-        </motion.div>
+        </div>
       </motion.div>
     </div>
   );
