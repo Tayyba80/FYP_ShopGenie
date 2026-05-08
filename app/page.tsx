@@ -1,4 +1,8 @@
-"use client";
+'use client';
+import { useState } from 'react';
+import ChatInterface from '../components/ChatInterface';
+import ResultDisplay from '../components/ResultsDisplay';
+import { ChatResponse } from '../types';
 
 import { motion } from "framer-motion";
 import Link from "next/link";
