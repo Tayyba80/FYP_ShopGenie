@@ -1,10 +1,12 @@
-import NextAuth, { NextAuthOptions } from "next-auth"
-import Google from "next-auth/providers/google"
-import GitHub from "next-auth/providers/github"
-import Credentials from "next-auth/providers/credentials"
-import { PrismaAdapter } from "@auth/prisma-adapter"
-import { prisma } from "@/lib/prisma"
-import bcrypt from "bcryptjs"
+import NextAuth, { NextAuthOptions } from "next-auth";
+import Google from "next-auth/providers/google";
+import GitHub from "next-auth/providers/github";
+import Credentials from "next-auth/providers/credentials";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+
+export const runtime = "nodejs"; // 🔥 CRITICAL FIX
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -28,32 +30,30 @@ export const authOptions: NextAuthOptions = {
       },
 
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("Missing email or password");
+        }
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
-        })
+        });
 
-        if (!user || !user.password) return null
+        if (!user || !user.password) return null;
 
         const isValid = await bcrypt.compare(
           credentials.password,
           user.password
-        )
+        );
 
-        if (!isValid) return null
+        if (!isValid) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        }
+        return user;
       },
     }),
   ],
 
   session: {
-    strategy: "database",
+    strategy: "jwt",
   },
 
   pages: {
@@ -61,15 +61,25 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async session({ session, user }) {
+    async jwt({ token, user }) {
+      if (user) token.id = user.id;
+      return token;
+    },
+
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id = user.id
+        session.user.id = token.id as string;
       }
-      return session
+      return session;
+    },
+
+    async redirect({ baseUrl }) {
+      return `${baseUrl}/chat`;
     },
   },
-}
 
-const handler = NextAuth(authOptions)
+  secret: process.env.NEXTAUTH_SECRET,
+};
 
-export { handler as GET, handler as POST }
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
