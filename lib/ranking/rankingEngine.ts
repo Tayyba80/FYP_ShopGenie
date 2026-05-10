@@ -65,26 +65,6 @@ export class RankingEngine {
     return topProducts;
   }
 
-  /**
-   * Learn brand names and feature keys from the product catalog.
-   * This greatly improves constraint extraction accuracy.
-   */
-  // private prepareConstraintExtractor(products: Product[]) {
-  //   const brands = new Set<string>();
-  //   const features = new Set<string>();
-
-  //   for (const p of products) {
-  //     if (p.brand) brands.add(p.brand.toLowerCase().trim());
-  //     p.keyFeatures?.forEach(f => features.add(f.toLowerCase().trim()));
-  //     if (p.specifications) {
-  //       Object.keys(p.specifications).forEach(k => features.add(k.toLowerCase().trim()));
-  //     }
-  //   }
-
-  //   ConstraintExtractor.setKnownBrands(Array.from(brands));
-  //   ConstraintExtractor.initializeCanonicalFeatures(features);
-  // }
-
   private buildRankedProduct(
     item: { product: Product; scoring: ScoringResult },
     constraints: UserConstraints

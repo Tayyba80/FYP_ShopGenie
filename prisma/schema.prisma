@@ -87,3 +87,12 @@ model Message {
 
   chat      Chat     @relation(fields: [chatId], references: [id])
 }
+
+model KnowledgeCache {
+  key      String   @id
+  type     String   // "brand" or "feature"
+  value    String
+  lastSeen DateTime @default(now()) @updatedAt
+
+  @@index([type])
+}
