@@ -1,14 +1,12 @@
 // instrumentation.ts
-import { PrismaClient } from '@prisma/client';
 import { setKnowledgeDb, getKnowledgeCache } from './lib/ranking/knowledgeCache';
-
-const prisma = new PrismaClient();
+import {prisma} from '@/lib/prisma';   // ← change to your actual path
 
 export async function register() {
-  // Only run once, even in dev with hot reload
+  // Must run only on the server (Node.js runtime)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     setKnowledgeDb(prisma);
     await getKnowledgeCache().loadFromDb();
-    console.log('✅ Knowledge cache preloaded');
+    console.log('✅ Knowledge cache preloaded from DB');
   }
 }
