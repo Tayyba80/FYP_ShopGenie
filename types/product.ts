@@ -38,6 +38,16 @@ export interface Product {
   timestamp: string;
 }
 
+export interface Breakdown {
+  priceScore: number;
+  ratingScore: number;
+  sentimentScore: number;
+  featureScore: number;
+  credibilityFactor: number;
+  hardConstraintPenalty: number;
+  total: number;
+}
+
 export interface RankedProduct {
   product: Product;
   score: number;
@@ -60,4 +70,75 @@ export interface RankedProduct {
     confidence: number;
   };
   rankingReason: string;
+}
+
+export interface ProductCard {
+  rank: number;
+  productId: string;
+  name: string;
+  brand?: string;
+  productUrl: string;
+  imageUrl: string;
+  platform: {
+    name: string;
+    code: string;
+    icon: string;
+    color?: string;
+  };
+  price: {
+    amount: number;
+    display: string;
+    original?: number;
+    currency: string;
+    shipping?: number;
+  };
+  rating: {
+    score: number;
+    count: number;
+    display: string;
+    stars: string;
+    percentage?: number;
+  };
+  availability: string;
+  delivery?: string;
+  keyFeatures: string[];
+  badges: Array<{ text: string; type: string }>;
+  trustBadge: { show: boolean; text: string; type?: string };
+  scores: {
+    overall: number;
+    price: number;
+    rating: number;
+    features: number;
+    trust: number;
+  };
+  sentiment: {
+    positive: number;
+    spamRatio: number;
+  };
+  explanation: {
+    bulletPoints: string[];
+    short: string;
+    natural: string | null;
+    rankingReason: string;
+    llmUsed: boolean;
+  };
+  cta: {
+    text: string;
+    url: string;
+  };
+}
+
+export interface ExplanationOutput {
+  query: string;
+  timestamp: string;
+  totalProducts: number;
+  totalFound: number;
+  chatResponse: string;
+  productCards: ProductCard[];
+  suggestedFollowups: string[];
+  stats: {
+    productsProcessed: number;
+    llmSuccessCount: number;
+    llmSuccessRate: string;
+  };
 }
