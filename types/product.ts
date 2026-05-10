@@ -1,5 +1,4 @@
 // types/product.ts
-
 export interface Review {
   reviewerName?: string;
   text: string;
@@ -47,11 +46,12 @@ export interface RankedProduct {
     ratingScore: number;
     sentimentScore: number;
     featureScore: number;
-    credibilityFactor: number;      
-    hardConstraintPenalty: number;   
+    credibilityFactor: number;
+    hardConstraintPenalty: number;
     total: number;
   };
   matchingFeatures: string[];
+  missingMustHaveFeatures: string[];
   sentimentSummary: {
     positive: number;
     negative: number;

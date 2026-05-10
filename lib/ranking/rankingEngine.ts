@@ -1,13 +1,12 @@
-// lib/ranking/rankingEngine.ts
-
 import { Product, RankedProduct } from '../../types/product';
 import { ConstraintExtractor, UserConstraints } from './constraintExtractor';
 import { ProductScorer, ScoringResult } from './productScorer';
 
 export interface RankingOptions {
-  topN?: number;           // number of products to return (default 5)
-  minScore?: number;       // minimum score threshold (default 0.1)
-  filterDisqualified?: boolean; // remove products with score 0 (default true)
+  topN?: number;
+  minScore?: number;
+  filterDisqualified?: boolean;
+  alwaysReturnAtLeastOne?: boolean;
 }
 
 export class RankingEngine {
@@ -19,6 +18,7 @@ export class RankingEngine {
 
   /**
    * Rank products based on user query.
+   * Assumes ConstraintExtractor has been initialized with global brand/feature sets.
    */
   async rankProducts(
     products: Product[],
@@ -29,53 +29,78 @@ export class RankingEngine {
       topN = 5,
       minScore = 0.1,
       filterDisqualified = true,
+      alwaysReturnAtLeastOne = true,
     } = options;
 
-    // 1. Extract constraints from query
+    if (products.length === 0) return [];
+
     const extractor = new ConstraintExtractor(userQuery);
     const constraints = await extractor.extract();
 
-    // 2. Score all products concurrently
-    const scoringPromises = products.map(product =>
-      this.scorer.scoreProduct(product, constraints)
-    );
+    const scoringPromises = products.map(p => this.scorer.scoreProduct(p, constraints));
     const scoredProducts = await Promise.all(scoringPromises);
 
-    // 3. Combine product with scoring result
-    const combined = scoredProducts.map((scoreResult, index) => ({
-      product: products[index],
-      scoring: scoreResult,
+    const combined = scoredProducts.map((sc, idx) => ({
+      product: products[idx],
+      scoring: sc,
     }));
 
-    // 4. Filter out disqualified/low-score products
-    const eligible = combined.filter(item => {
+    let eligible = combined.filter(item => {
       if (filterDisqualified && item.scoring.score === 0) return false;
       if (item.scoring.score < minScore) return false;
       return true;
     });
 
-    // 5. Sort by score descending
+    if (eligible.length === 0 && alwaysReturnAtLeastOne && combined.length > 0) {
+      const best = combined.reduce((a, b) => (a.scoring.score > b.scoring.score ? a : b));
+      eligible = [best];
+    }
+
     eligible.sort((a, b) => b.scoring.score - a.scoring.score);
 
-    // 6. Take top N and build final ranked products
-    const topProducts = eligible.slice(0, topN).map(item => {
-      const reason = this.generateRankingReason(item.product, item.scoring, constraints);
-      return {
-        product: item.product,
-        score: item.scoring.score,
-        breakdown: item.scoring.breakdown,
-        matchingFeatures: item.scoring.matchingFeatures,
-        sentimentSummary: item.scoring.sentimentSummary,
-        rankingReason: reason,
-      };
-    });
+    const topProducts = eligible.slice(0, topN).map(item =>
+      this.buildRankedProduct(item, constraints)
+    );
 
     return topProducts;
   }
 
   /**
-   * Generate a human‑readable explanation for why a product was ranked highly.
+   * Learn brand names and feature keys from the product catalog.
+   * This greatly improves constraint extraction accuracy.
    */
+  // private prepareConstraintExtractor(products: Product[]) {
+  //   const brands = new Set<string>();
+  //   const features = new Set<string>();
+
+  //   for (const p of products) {
+  //     if (p.brand) brands.add(p.brand.toLowerCase().trim());
+  //     p.keyFeatures?.forEach(f => features.add(f.toLowerCase().trim()));
+  //     if (p.specifications) {
+  //       Object.keys(p.specifications).forEach(k => features.add(k.toLowerCase().trim()));
+  //     }
+  //   }
+
+  //   ConstraintExtractor.setKnownBrands(Array.from(brands));
+  //   ConstraintExtractor.initializeCanonicalFeatures(features);
+  // }
+
+  private buildRankedProduct(
+    item: { product: Product; scoring: ScoringResult },
+    constraints: UserConstraints
+  ): RankedProduct {
+    const reason = this.generateRankingReason(item.product, item.scoring, constraints);
+    return {
+      product: item.product,
+      score: item.scoring.score,
+      breakdown: item.scoring.breakdown,
+      matchingFeatures: item.scoring.matchingFeatures,
+      missingMustHaveFeatures: item.scoring.missingMustHaveFeatures,
+      sentimentSummary: item.scoring.sentimentSummary,
+      rankingReason: reason,
+    };
+  }
+
   private generateRankingReason(
     product: Product,
     scoring: ScoringResult,
@@ -83,21 +108,16 @@ export class RankingEngine {
   ): string {
     const parts: string[] = [];
 
-    // Price fit
     if (constraints.minPrice !== undefined || constraints.maxPrice !== undefined) {
       parts.push(`Price ₹${product.price.amount} fits your budget`);
     }
 
-    // Feature matches
     if (scoring.matchingFeatures.length > 0) {
       const featureList = scoring.matchingFeatures.slice(0, 3).join(', ');
-      const more = scoring.matchingFeatures.length > 3
-        ? ` +${scoring.matchingFeatures.length - 3} more`
-        : '';
+      const more = scoring.matchingFeatures.length > 3 ? ` +${scoring.matchingFeatures.length - 3} more` : '';
       parts.push(`Matches: ${featureList}${more}`);
     }
 
-    // Sentiment summary (with confidence)
     const pos = scoring.sentimentSummary.positive;
     const neg = scoring.sentimentSummary.negative;
     const total = pos + neg + scoring.sentimentSummary.neutral;
@@ -107,12 +127,10 @@ export class RankingEngine {
       parts.push(`${posPercent}% positive reviews (${conf}% confidence)`);
     }
 
-    // Rating info
     if (product.rating.count > 0) {
       parts.push(`Rated ${product.rating.average.toFixed(1)}★ (${product.rating.count} reviews)`);
     }
 
-    // Credibility note if score was reduced
     if (scoring.breakdown.credibilityFactor < 0.8) {
       if (scoring.sentimentSummary.spamRatio > 0.2) {
         parts.push(`Some spam filtered`);
@@ -121,7 +139,6 @@ export class RankingEngine {
       }
     }
 
-    // If product had missing must‑have features (score would be 0, but if we kept it, note why)
     if (scoring.missingMustHaveFeatures.length > 0) {
       parts.push(`Missing must‑have: ${scoring.missingMustHaveFeatures.join(', ')}`);
     }

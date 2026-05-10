@@ -1,21 +1,17 @@
 import { Review } from '../../types/product';
-import { 
-  pipeline, 
-  env, 
-  TextClassificationPipeline, 
-  FeatureExtractionPipeline 
+import {
+  pipeline,
+  env,
+  TextClassificationPipeline,
+  FeatureExtractionPipeline,
 } from '@xenova/transformers';
 import { franc } from 'franc-min';
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-env.localModelPath = './models';
-env.allowRemoteModels = true;   // ✅ Fixed typo
+// Configuration
+env.localModelPath = process.env.MODEL_PATH || './models';
+env.allowRemoteModels = process.env.ALLOW_REMOTE_MODELS !== 'false';
 
-// ============================================================================
-// ROMAN URDU → URDU SCRIPT TRANSLITERATION
-// ============================================================================
+// Roman Urdu → Urdu script transliteration
 const romanUrduToUrdu: Record<string, string> = {
   'main': 'میں', 'ny': 'نے', 'yeh': 'یہ', 'ha': 'ہے', 'hai': 'ہے',
   'bohot': 'بہت', 'bohat': 'بہت', 'acha': 'اچھا', 'achi': 'اچھی',
@@ -47,16 +43,15 @@ function isLikelyRomanUrdu(text: string): boolean {
   }
   return false;
 }
-// ============================================================================
-// INTERFACES
-// ============================================================================
+
+// Interfaces
 export interface ReviewAnalysis {
-  sentimentScore: number;        // -1 to +1
+  sentimentScore: number;
   sentimentLabel: 'positive' | 'negative' | 'neutral';
   confidence: number;
   isSpam: boolean;
   spamReason?: string;
-  language: string;              // ISO 639-3 code
+  language: string;
 }
 
 export interface ProductReviewAnalysis {
@@ -71,15 +66,12 @@ export interface ProductReviewAnalysis {
   uniqueReviewers: number;
 }
 
-// ============================================================================
-// SINGLETON ANALYZER
-// ============================================================================
 export class ReviewAnalyzer {
   private static instance: ReviewAnalyzer;
   private sentimentPipeline: TextClassificationPipeline | null = null;
   private embeddingPipeline: FeatureExtractionPipeline | null = null;
   private initPromise: Promise<void> | null = null;
-   private analysisCache = new Map<string, { analysis: ProductReviewAnalysis; timestamp: number }>();
+  private analysisCache = new Map<string, { analysis: ProductReviewAnalysis; timestamp: number }>();
   private readonly CACHE_TTL_MS = 30 * 60 * 1000;
 
   private constructor() {}
@@ -94,7 +86,6 @@ export class ReviewAnalyzer {
   private async initializeModels(): Promise<void> {
     try {
       console.log('🔄 Loading sentiment & embedding models...');
-      
       this.sentimentPipeline = await pipeline(
         'sentiment-analysis',
         'Xenova/bert-base-multilingual-uncased-sentiment'
@@ -112,6 +103,12 @@ export class ReviewAnalyzer {
     }
   }
 
+  setPipelines(sentiment: any, embedding: any) {
+    this.sentimentPipeline = sentiment;
+    this.embeddingPipeline = embedding;
+    this.initPromise = Promise.resolve(); // mark as initialized
+  }
+
   private async ensureInitialized(): Promise<void> {
     if (this.sentimentPipeline && this.embeddingPipeline) return;
     if (!this.initPromise) {
@@ -120,13 +117,9 @@ export class ReviewAnalyzer {
     await this.initPromise;
   }
 
-  // ==========================================================================
-  // PUBLIC API
-  // ==========================================================================
-    async analyzeProductReviews(reviews: Review[], productId?: string): Promise<ProductReviewAnalysis> {
+  async analyzeProductReviews(reviews: Review[], productId?: string): Promise<ProductReviewAnalysis> {
     await this.ensureInitialized();
 
-    // ⭐ CACHE CHECK: If we have a productId and a fresh cache entry, return it
     if (productId && this.analysisCache.has(productId)) {
       const cached = this.analysisCache.get(productId)!;
       if (Date.now() - cached.timestamp < this.CACHE_TTL_MS) {
@@ -149,32 +142,28 @@ export class ReviewAnalyzer {
       return emptyResult;
     }
 
-    // --- Existing analysis logic (unchanged) ---
-    // Preprocess: language detection & Roman Urdu check
     const preprocessed = reviews.map(r => ({
       review: r,
       lang: franc(r.text, { minLength: 3 }),
       isRomanUrdu: isLikelyRomanUrdu(r.text),
     }));
 
-    // Batch sentiment analysis
     const sentimentResults = await this.batchSentimentAnalysis(
       preprocessed.map(p => p.isRomanUrdu ? transliterateRomanUrdu(p.review.text) : p.review.text)
     );
 
-    // Build initial analysis objects
     const analyses: ReviewAnalysis[] = preprocessed.map((p, idx) => {
       const result = sentimentResults[idx];
-      const starRating = parseInt(result.label.split(' ')[0]); // "5 stars" → 5
+      const starRating = parseInt(result.label.split(' ')[0]);
       let sentimentScore: number;
       let sentimentLabel: 'positive' | 'negative' | 'neutral';
 
       if (starRating >= 4) {
         sentimentLabel = 'positive';
-        sentimentScore = (starRating - 3) / 2;
+        sentimentScore = (starRating - 3) / 2; // 4→0.5, 5→1.0
       } else if (starRating <= 2) {
         sentimentLabel = 'negative';
-        sentimentScore = (starRating - 3) / 2;
+        sentimentScore = (starRating - 3) / 2; // 2→-0.5, 1→-1.0
       } else {
         sentimentLabel = 'neutral';
         sentimentScore = 0;
@@ -189,24 +178,22 @@ export class ReviewAnalyzer {
       };
     });
 
-    // Spam detection (embeddings for same-reviewer similarity)
     await this.batchSpamDetection(reviews, analyses, preprocessed);
 
-    // Aggregate statistics
     const spamCount = analyses.filter(a => a.isSpam).length;
     const spamRatio = spamCount / reviews.length;
-    
+
     const validAnalyses = analyses.filter(a => !a.isSpam);
     const distribution = {
       positive: validAnalyses.filter(a => a.sentimentLabel === 'positive').length,
       negative: validAnalyses.filter(a => a.sentimentLabel === 'negative').length,
       neutral: validAnalyses.filter(a => a.sentimentLabel === 'neutral').length,
     };
-    
+
     const averageSentiment = validAnalyses.length > 0
       ? validAnalyses.reduce((sum, a) => sum + a.sentimentScore, 0) / validAnalyses.length
       : 0;
-    
+
     const uniqueReviewers = new Set(
       reviews.map(r => r.reviewerName?.toLowerCase().trim()).filter(Boolean)
     ).size;
@@ -219,7 +206,6 @@ export class ReviewAnalyzer {
       uniqueReviewers,
     };
 
-    // ⭐ STORE IN CACHE before returning
     if (productId) {
       this.analysisCache.set(productId, { analysis: result, timestamp: Date.now() });
     }
@@ -227,17 +213,12 @@ export class ReviewAnalyzer {
     return result;
   }
 
-  // ==========================================================================
-  // PRIVATE HELPERS
-  // ==========================================================================
   private async batchSentimentAnalysis(texts: string[]): Promise<any[]> {
     const results: any[] = [];
     const chunkSize = 32;
     for (let i = 0; i < texts.length; i += chunkSize) {
       const chunk = texts.slice(i, i + chunkSize);
-      const chunkResults = await Promise.all(
-        chunk.map(text => this.sentimentPipeline!(text))
-      );
+      const chunkResults = await Promise.all(chunk.map(text => this.sentimentPipeline!(text)));
       results.push(...chunkResults.map(r => r[0]));
     }
     return results;
@@ -248,26 +229,16 @@ export class ReviewAnalyzer {
     analyses: ReviewAnalysis[],
     preprocessed: any[]
   ): Promise<void> {
-    // 1. Fast heuristic checks
     for (let i = 0; i < reviews.length; i++) {
       const review = reviews[i];
       const analysis = analyses[i];
 
-      // Rating-sentiment mismatch
-      // if (review.rating >= 4 && analysis.sentimentLabel === 'negative') {
-      //   analysis.isSpam = true;
-      //   analysis.spamReason = 'Rating-sentiment mismatch (high rating, negative text)';
-      //   continue;
-      // }
-
-      // Very short generic review
       if (review.text.length < 15 && /^(good|nice|great|ok|bad|poor|achi|kharab|bakwas)$/i.test(review.text.trim())) {
         analysis.isSpam = true;
         analysis.spamReason = 'Too short and generic';
         continue;
       }
 
-      // Identical text
       const identicalCount = reviews.filter(r => r.text === review.text).length;
       if (identicalCount > 1) {
         analysis.isSpam = true;
@@ -275,7 +246,6 @@ export class ReviewAnalyzer {
         continue;
       }
 
-      // Suspicious reviewer name pattern
       if (review.reviewerName && /^[A-Z]\d+$/.test(review.reviewerName)) {
         analysis.isSpam = true;
         analysis.spamReason = 'Suspicious reviewer name pattern';
@@ -283,7 +253,6 @@ export class ReviewAnalyzer {
       }
     }
 
-    // 2. Semantic similarity for same-reviewer groups
     const reviewerGroups: Record<string, number[]> = {};
     for (let i = 0; i < reviews.length; i++) {
       if (analyses[i].isSpam) continue;
@@ -305,11 +274,11 @@ export class ReviewAnalyzer {
         for (let j = i + 1; j < indices.length; j++) {
           const idxB = indices[j];
           const similarity = this.cosineSimilarity(embeddings[i], embeddings[j]);
-          if (similarity > 0.85) {
+          if (similarity > 0.9) { // ← relaxed threshold to reduce false spam
             analyses[idxA].isSpam = true;
-            analyses[idxA].spamReason = `Semantically similar (${(similarity*100).toFixed(1)}%) to another review by same reviewer`;
+            analyses[idxA].spamReason = `Semantically similar (${(similarity * 100).toFixed(1)}%) to another review by same reviewer`;
             analyses[idxB].isSpam = true;
-            analyses[idxB].spamReason = `Semantically similar (${(similarity*100).toFixed(1)}%) to another review by same reviewer`;
+            analyses[idxB].spamReason = `Semantically similar (${(similarity * 100).toFixed(1)}%) to another review by same reviewer`;
           }
         }
       }
@@ -319,10 +288,7 @@ export class ReviewAnalyzer {
   private async getBatchEmbeddings(texts: string[]): Promise<number[][]> {
     const embeddings: number[][] = [];
     for (const text of texts) {
-      const output = await this.embeddingPipeline!(text, {
-        pooling: 'mean',
-        normalize: true,
-      });
+      const output = await this.embeddingPipeline!(text, { pooling: 'mean', normalize: true });
       embeddings.push(Array.from(output.data));
     }
     return embeddings;
@@ -337,4 +303,4 @@ export class ReviewAnalyzer {
     }
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
   }
-}
+} 
