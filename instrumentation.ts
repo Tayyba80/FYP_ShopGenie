@@ -1,6 +1,5 @@
-// instrumentation.ts
 import { setKnowledgeDb, getKnowledgeCache } from './lib/ranking/knowledgeCache';
-import {prisma} from '@/lib/prisma';   // ← change to your actual path
+import {prisma} from '@/lib/prisma'; 
 
 export async function register() {
   // Must run only on the server (Node.js runtime)

@@ -4,7 +4,7 @@ import { ConstraintExtractor } from '@/lib/ranking/constraintExtractor';
 import { getKnowledgeCache, setKnowledgeDb } from '@/lib/ranking/knowledgeCache';
 import { ShopGenieExplanationModule } from '@/lib/explanation-module/explanationModule';
 import { prisma } from '@/lib/prisma';
-import type { Product, RankedProduct, ExplanationOutput } from '@/types/product';
+import type { Product, ExplanationOutput } from '@/types/product';
 
 setKnowledgeDb(prisma);
 
@@ -112,7 +112,7 @@ const STATIC_PRODUCTS: Product[] = [
     productId: 'coach-crossbody',
     platform: 'ebay',
     title: 'Coach Pebbled Leather Crossbody Bag',
-    productUrl: 'https://ebay.com/coach-crossbody',
+    productUrl: 'https://www.flipkart.com/exotic-women-green-handbag/p/itm6ad6394fda31a',
     mainImageUrl: 'https://picsum.photos/seed/coach/200',
     brand: 'Coach',
     model: 'Pebble Crossbody',
@@ -296,7 +296,9 @@ export async function getAIResponse(
   }
 
   const cache = getKnowledgeCache();
-  await cache.loadFromDb();
+  if (cache.getBrands().length === 0 && cache.getFeatures().length === 0) {
+    await cache.loadFromDb();
+  }
   await cache.learnFromProducts(products);
   ConstraintExtractor.setKnownBrands(cache.getBrands());
   ConstraintExtractor.initializeCanonicalFeatures(cache.getFeatures());
