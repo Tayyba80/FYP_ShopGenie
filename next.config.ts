@@ -13,7 +13,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Tailwind/PostCSS handled automatically
 };
 
 export default nextConfig;

@@ -6,10 +6,10 @@ import {
   FeatureExtractionPipeline,
 } from '@xenova/transformers';
 import { franc } from 'franc-min';
-
+import '../ml-init';   
 // Configuration
-env.localModelPath = process.env.MODEL_PATH || './models';
-env.allowRemoteModels = process.env.ALLOW_REMOTE_MODELS !== 'false';
+// env.localModelPath = process.env.MODEL_PATH || './models';
+// env.allowRemoteModels = process.env.ALLOW_REMOTE_MODELS !== 'false';
 
 // Roman Urdu → Urdu script transliteration
 const romanUrduToUrdu: Record<string, string> = {
