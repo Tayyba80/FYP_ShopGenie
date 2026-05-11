@@ -1,6 +1,7 @@
 // src/lib/ml-init.ts
 import { env } from '@xenova/transformers';
 
+env.cacheDir = process.env.MODEL_PATH || './models';
 env.localModelPath = process.env.MODEL_PATH || './models';
 env.allowRemoteModels = process.env.ALLOW_REMOTE_MODELS !== 'false';
 // Optional: disable progress logs in production to keep output clean
