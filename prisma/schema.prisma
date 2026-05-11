@@ -68,32 +68,32 @@ model PasswordResetToken {
 }
 
 model Chat {
-  id          String    @id @default(cuid())
+  id          String      @id @default(cuid())
 
-  title       String
+  title       String      @default("New Chat")
+
   userId      String
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   messages    Message[]
 
   @@index([userId])
+  @@index([updatedAt])
 }
 
 model Message {
-  id          String    @id @default(cuid())
+  id        String    @id @default(cuid())
+  chatId    String
+  role      MessageRole
+  content   String    @db.Text
+  metadata  Json?     // NEW: stores explanation, product cards, follow-ups, etc.
+  createdAt DateTime  @default(now())
 
-  chatId      String
-
-  role        MessageRole
-  content     String    @db.Text
-
-  createdAt   DateTime  @default(now())
-
-  chat        Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId])
 }

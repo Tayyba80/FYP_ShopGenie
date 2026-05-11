@@ -72,10 +72,10 @@ export class ConstraintExtractor {
   }
 
   //allow tests to inject mock pipelines
-   static setPipelines(featureEmbedder: any, nerModel: any) {
-    ConstraintExtractor.featureEmbedder = featureEmbedder;
-    ConstraintExtractor.nerModel = nerModel;
-  }
+  //  static setPipelines(featureEmbedder: any, nerModel: any) {
+  //   ConstraintExtractor.featureEmbedder = featureEmbedder;
+  //   ConstraintExtractor.nerModel = nerModel;
+  // }
 
     private static async ensureModels(): Promise<void> {
     if (!ConstraintExtractor.initPromise) {
