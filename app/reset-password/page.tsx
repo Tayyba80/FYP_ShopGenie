@@ -1,14 +1,15 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";         
 import { motion } from "motion/react";
 import { Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export default function ResetPasswordPage() {
+// Separate the form logic into an inner component
+function ResetPasswordForm() {
   const token = useSearchParams().get("token");
   const email = useSearchParams().get("email");
   const router = useRouter();
@@ -19,27 +20,18 @@ export default function ResetPasswordPage() {
 
   const handleReset = async () => {
     setLoading(true);
-
     await fetch("/api/auth/reset-password", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, email, password }),
     });
-
     setDone(true);
     setLoading(false);
-
-    // ⬇️ redirect after short delay (better UX)
-    setTimeout(() => {
-      router.push("/login");
-    }, 1500);
+    setTimeout(() => router.push("/login"), 1500);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 p-6">
-
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -49,11 +41,9 @@ export default function ResetPasswordPage() {
           <Sparkles className="text-purple-600" />
           <h1 className="text-2xl font-bold">Reset Password</h1>
         </div>
-
         {!done ? (
           <>
             <Label>New Password</Label>
-
             <div className="relative mt-2 mb-5">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 size-5" />
               <Input
@@ -63,7 +53,6 @@ export default function ResetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-
             <Button
               onClick={handleReset}
               disabled={loading}
@@ -79,5 +68,14 @@ export default function ResetPasswordPage() {
         )}
       </motion.div>
     </div>
+  );
+}
+
+// Page component wraps the form in Suspense
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
