@@ -9,9 +9,6 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "lint": "eslint",
-    "test:ranking": "tsx lib/tests/new-test-ranking.ts",
-    "test:constraints": "tsx lib/tests/test-constraints.ts",
-    "test:reviews": "tsx lib/tests/test-reviews.ts",
     "download:models": "tsx scripts/download-constraint-models.ts && tsx scripts/download-review-models.ts",
     "preview": "next dev --turbo",
     "clean": "Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue; Remove-Item -Force package-lock.json, pnpm-lock.yaml, pnpm-workspace.yaml -ErrorAction SilentlyContinue"
