@@ -1,6 +1,7 @@
 import nlp from 'compromise';
 import { pipeline, FeatureExtractionPipeline, TokenClassificationPipeline } from '@xenova/transformers';
 import { distance as levenshtein } from 'fastest-levenshtein';
+import '../ml-init'; 
 
 export interface ExtractedConstraint {
   type: 'price' | 'rating' | 'brand' | 'feature' | 'excluded_feature';
@@ -70,12 +71,6 @@ export class ConstraintExtractor {
     ConstraintExtractor.canonicalFeatures = Array.from(new Set(features.map(f => f.toLowerCase().trim())));
     ConstraintExtractor.cachedCanonicalEmbeddings = null; // invalidate
   }
-
-  //allow tests to inject mock pipelines
-  //  static setPipelines(featureEmbedder: any, nerModel: any) {
-  //   ConstraintExtractor.featureEmbedder = featureEmbedder;
-  //   ConstraintExtractor.nerModel = nerModel;
-  // }
 
     private static async ensureModels(): Promise<void> {
     if (!ConstraintExtractor.initPromise) {

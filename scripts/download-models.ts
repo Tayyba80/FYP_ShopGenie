@@ -1,29 +1,20 @@
 import { pipeline, env } from '@xenova/transformers';
 
-async function download() {
-  console.log('📦 Downloading ML models (this may take a few minutes)...');
-  
+async function downloadAll() {
+  // This controls BOTH where models are saved and where they are loaded from later
+  env.cacheDir = './models';
+  // Optional: also set localModelPath for good measure (redundant but harmless)
   env.localModelPath = './models';
-  
-  console.log('⏳ Feature extraction model (all-mpnet-base-v2)...');
-  await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2', {
-    progress_callback: (progress: any) => {
-      if (progress.status === 'downloading') {
-        console.log(`   ${progress.file}: ${Math.round(progress.progress || 0)}%`);
-      }
-    }
-  });
-  
-  console.log('⏳ NER model (bert-base-NER)...');
-  await pipeline('token-classification', 'Xenova/bert-base-NER', {
-    progress_callback: (progress: any) => {
-      if (progress.status === 'downloading') {
-        console.log(`   ${progress.file}: ${Math.round(progress.progress || 0)}%`);
-      }
-    }
-  });
-  
-  console.log('✅ All models cached successfully.');
+  env.allowRemoteModels = true;
+
+  console.log('⏳ Downloading all models...');
+
+  await pipeline('feature-extraction', 'Xenova/all-mpnet-base-v2');
+  await pipeline('token-classification', 'Xenova/bert-base-NER');
+  await pipeline('sentiment-analysis', 'Xenova/bert-base-multilingual-uncased-sentiment');
+  await pipeline('feature-extraction', 'Xenova/multilingual-e5-small');
+
+  console.log('✅ All models cached in ./models');
 }
 
-download().catch(console.error);
+downloadAll().catch(console.error);

@@ -39,3 +39,63 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+node_modules/
+dist/
+build/
+.next/
+.env
+node_modules
+.env.local
+
+
+/src/generated/prisma
+
+# backend/.gitignore
+# Python specific ignores
+
+# Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+#model
+models/
+
+# Environment variables (secrets)
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*.tmp
+*.bak
+*.backup
+
+# Output files
+test_output.json
