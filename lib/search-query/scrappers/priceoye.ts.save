@@ -1,0 +1,203 @@
+// src/ai/retrieval/scrapers/priceoye.ts
+// PriceOye uses server-side rendering so Cheerio works for listings
+// Product pages need Playwright for reviews
+
+import * as cheerio from "cheerio";
+import { getBrowser, newContext } from "./browser";
+import { withRetry } from "./retry";
+import type { Product, Review } from "./product";
+import { nanoid } from "nanoid";
+
+const BASE_URL    = "https://priceoye.pk";
+const MAX_PRODUCTS = 10;
+const MAX_REVIEWS  = 5;
+const TIMEOUT      = 20000;
+
+export async function scrapePriceOye(
+  query: string,
+  category: string
+): Promise<Product[]> {
+  // ── Step 1: Fetch listing page with plain fetch + Cheerio ─────────────────
+  const listings = await withRetry(async () => {
+    const res = await fetch(
+      `${BASE_URL}/search?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+          Accept: "text/html,application/xhtml+xml",
+        },
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+    if (!res.ok) throw new Error(`PriceOye HTTP ${res.status}`);
+    return res.text();
+  });
+
+  const $ = cheerio.load(listings);
+  const rawListings: any[] = [];
+
+  // PriceOye product card — selectors may need tweaking after testing
+  $(
+    ".productBox, .product-card, [class*='ProductCard'], [class*='product-item']"
+  ).each((_, el) => {
+    if (rawListings.length >= MAX_PRODUCTS) return;
+
+    const title    = $(el).find(".product-name, .name, h3, h4").first().text().trim();
+    const priceStr = $(el).find("[class*='price']").first().text().replace(/[^0-9]/g, "");
+    const price    = priceStr ? parseInt(priceStr) : null;
+    const origStr  = $(el).find("[class*='original'], [class*='old-price']").first().text().replace(/[^0-9]/g, "");
+    const originalPrice = origStr && origStr !== priceStr ? parseInt(origStr) : undefined;
+
+    const ratingStr = $(el).find("[class*='rating']").first().text().trim();
+    const rating    = ratingStr ? parseFloat(ratingStr) : 0;
+
+    const reviewStr  = $(el).find("[class*='review'], [class*='count']").first().text().replace(/[^0-9]/g, "");
+    const reviewCount = reviewStr ? parseInt(reviewStr) : 0;
+
+    const imageUrl  = $(el).find("img").first().attr("src") ?? "";
+    const relLink   = $(el).find("a").first().attr("href") ?? "";
+    const productUrl = relLink.startsWith("http") ? relLink : `${BASE_URL}${relLink}`;
+
+    const availability = $(el).find("[class*='stock'], [class*='availability']").first().text().trim() || "In Stock";
+
+    if (!title || !price || !productUrl || productUrl === BASE_URL) return;
+
+    rawListings.push({ title, price, originalPrice, rating, reviewCount, imageUrl, productUrl, availability });
+  });
+
+  if (rawListings.length === 0) return [];
+
+  // ── Step 2: Get reviews via Playwright ────────────────────────────────────
+  const browser = await getBrowser();
+  const context  = await newContext(browser);
+  const products: Product[] = [];
+
+  try {
+    for (const listing of rawListings.slice(0, MAX_PRODUCTS)) {
+      const reviews = await scrapePriceOyeReviews(context, listing.productUrl);
+      const details = await scrapePriceOyeDetails(listing.productUrl);
+
+      products.push({
+        productId:    `priceoye_${nanoid(8)}`,
+        platform:     "PriceOye",
+        title:        listing.title,
+        productUrl:   listing.productUrl,
+        mainImageUrl: listing.imageUrl,
+        category,
+        description:  details.description,
+        keyFeatures:  details.keyFeatures,
+        specifications: details.specifications,
+        price: {
+          amount:         listing.price,
+          currency:       "PKR",
+          originalAmount: listing.originalPrice,
+        },
+        availability: listing.availability,
+        rating: {
+          average: listing.rating,
+          count:   listing.reviewCount,
+        },
+        reviews,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } finally {
+    await context.close();
+  }
+
+  return products;
+}
+
+async function scrapePriceOyeDetails(productUrl: string): Promise<{
+  description?: string;
+  keyFeatures?: string[];
+  specifications?: Record<string, string>;
+}> {
+  try {
+    const res  = await fetch(productUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 Chrome/120.0.0.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    const html = await res.text();
+    const $    = cheerio.load(html);
+
+    const description = $("[class*='description'], [class*='about']").first().text().trim() || undefined;
+
+    const keyFeatures: string[] = [];
+    $("[class*='feature'] li, [class*='highlights'] li").each((_, el) => {
+      const text = $(el).text().trim();
+      if (text) keyFeatures.push(text);
+    });
+
+    const specifications: Record<string, string> = {};
+    $("table tr, [class*='spec'] tr").each((_, el) => {
+      const cells = $(el).find("td");
+      if (cells.length >= 2) {
+        const key = $(cells[0]).text().trim();
+        const val = $(cells[1]).text().trim();
+        if (key && val) specifications[key] = val;
+      }
+    });
+
+    return {
+      description:    description || undefined,
+      keyFeatures:    keyFeatures.length > 0 ? keyFeatures : undefined,
+      specifications: Object.keys(specifications).length > 0 ? specifications : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function scrapePriceOyeReviews(
+  context: any,
+  productUrl: string
+): Promise<Review[]> {
+  const page = await context.newPage();
+
+  try {
+    await withRetry(() =>
+      page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: TIMEOUT })
+    );
+
+    await page
+      .waitForSelector("[class*='review'], [class*='comment']", { timeout: 8000 })
+      .catch(() => {});
+
+    await page.waitForTimeout(800);
+
+    return await page.evaluate((max: number) => {
+      const items = document.querySelectorAll(
+        "[class*='review-item'], [class*='ReviewCard'], [class*='comment-item']"
+      );
+      const results: any[] = [];
+
+      items.forEach((el) => {
+        if (results.length >= max) return;
+
+        const nameEl   = el.querySelector("[class*='name'], [class*='author'], [class*='user']");
+        const textEl   = el.querySelector("[class*='body'], [class*='content'], [class*='text'], p");
+        const dateEl   = el.querySelector("[class*='date'], time");
+        const stars    = el.querySelectorAll("[class*='filled'], [class*='active'], [class*='full']").length;
+
+        const text = textEl?.textContent?.trim();
+        if (!text || text.length < 5) return;
+
+        results.push({
+          reviewerName: nameEl?.textContent?.trim() || undefined,
+          text,
+          rating: Math.min(5, Math.max(1, stars || 3)),
+          date:   dateEl?.textContent?.trim() || undefined,
+        });
+      });
+
+      return results;
+    }, MAX_REVIEWS);
+  } catch {
+    return [];
+  } finally {
+    await page.close();
+  }
+}
