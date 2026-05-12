@@ -1,2 +1,2 @@
 [service]
-memory = 4096   
+memory = "8192Mi" 
