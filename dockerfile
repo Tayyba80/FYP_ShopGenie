@@ -1,23 +1,26 @@
 # ---- Stage 1: Build & Download Models ----
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
 
+# Only install python3 + make + g++ required by onnxruntime-node
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
-RUN npm ci
+RUN npm ci                           # production deps only .mjs do
 
 COPY prisma ./prisma
 RUN npx prisma generate
 
 COPY . .
 
-# Download the AI models directly inside the image
+# Download models (plain JS, runs fine)
 RUN node scripts/download-models.mjs
 
 # Build Next.js in standalone mode
 RUN npm run build
 
 # ---- Stage 2: Production Runner ----
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV MODEL_PATH=/app/models
